@@ -4,10 +4,10 @@ A hands-on, operator-focused security portfolio: realistic infrastructure, adver
 
 ## Projects
 
-### [Project 1 — Attack & Defend: a purple-team home SOC](./project-1-home-soc/)
+### [Project 1 - Attack & Defend: a purple-team home SOC](./project-1-home-soc/)
 A small Active Directory lab, attacked with real ATT&CK tradecraft and defended with custom detections. Produces a growing library of Sigma detections, each paired with the attack that triggered it and a one-page incident report.
 
-### [Project 2 — Live threat-intel honeypot](./project-2-honeypot/) *(later)*
+### [Project 2 - Live threat-intel honeypot](./project-2-honeypot/) *(later)*
 Internet-facing honeypots feeding a Python enrichment pipeline, a live dashboard, and monthly CTI reports.
 
 ## ATT&CK coverage
