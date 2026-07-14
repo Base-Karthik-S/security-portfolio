@@ -1,4 +1,4 @@
-# Project 1 — Attack & Defend: A Home SOC with a Public Detection Portfolio
+# Project 1 - Attack & Defend: A Home SOC with a Public Detection Portfolio
 
 A small, enterprise-shaped lab where I stand up realistic telemetry, attack the
 environment with real adversary tradecraft, and then **detect, triage, and document**
@@ -15,7 +15,7 @@ that I can see my own activity land as searchable events.
 
 - Building enterprise-style infrastructure from scratch: a promoted **Active Directory
   domain controller** and a single-node **Elastic Stack** SIEM.
-- Understanding **what a SOC actually sees** — Windows Security event IDs and Sysmon
+- Understanding **what a SOC actually sees** - Windows Security event IDs and Sysmon
   process telemetry, normalised into Elastic Common Schema (ECS).
 - Standing up a modern log pipeline with **Fleet-managed Elastic Agent** over TLS,
   including the certificate, encryption-key, and output-trust details that make it work.
@@ -61,7 +61,7 @@ Two VMs on a single 16 GB laptop, connected over VMware's **VMnet8 NAT** network
 
 The Elastic Agent on DC01 uses two separate TLS connections to ELK01:
 
-- **Control plane — Fleet Server on `:8220` (TLS).** The agent enrolls against Fleet,
+- **Control plane - Fleet Server on `:8220` (TLS).** The agent enrolls against Fleet,
   receives its policy (`dc01-windows`), and reports health.
 - **Data plane — Elasticsearch on `:9200` (TLS).** The agent ships collected events
   directly into Elasticsearch, into `logs-*` data streams.
@@ -96,7 +96,7 @@ The Docker starter kit is in **[`elk/`](./elk/)**: `docker-compose.yml`, `.env.e
 then bring the stack up.
 
 **Prerequisites:** a host with hardware virtualisation enabled, ~16 GB RAM (practical
-floor — keep idle VMs powered off), and ~80 GB free disk (use thin-provisioned disks).
+floor - keep idle VMs powered off), and ~80 GB free disk (use thin-provisioned disks).
 
 > Both DC01 and ELK01 must be running together for live telemetry: the logon event is
 > generated on DC01 and shipped to ELK01 in real time. CLIENT01 is not required.
@@ -106,7 +106,7 @@ floor — keep idle VMs powered off), and ~80 GB free disk (use thin-provisioned
 ## Verifying the pipeline: from action to searchable event
 
 The Weeks 1–2 milestone is proving I can see my own activity as SOC telemetry. I traced
-a single action end to end — from the command that caused it to the event in the SIEM.
+a single action end to end, from the command that caused it to the event in the SIEM.
 
 **1. Generate a logon on DC01.** From an elevated PowerShell I confirmed my identity and
 forced a fresh interactive logon:
@@ -145,7 +145,7 @@ report **Healthy** in Fleet, on Stack 9.4.3:
 ![DC01 Elastic Agent healthy in Fleet](./docs/img/healthy-fleet-dc01-elk01.png)
 
 Together this confirms endpoint (Sysmon EID 1) **and** security (Windows 4624) telemetry
-flowing over a healthy, Fleet-managed, TLS pipeline — I can see the lab.
+flowing over a healthy, Fleet-managed, TLS pipeline; I can see the lab.
 
 ---
 
@@ -196,6 +196,6 @@ project-1-home-soc/
 - [x] Fleet Server stood up; Elastic Agent enrolled on DC01 (Healthy)
 - [x] Own `4624` logon traced from `runas` to Kibana; README, diagram, and screenshots committed
 
-**Next — Week 3:** install **Atomic Red Team**, run a handful of atomics
+**Next - Week 3:** install **Atomic Red Team**, run a handful of atomics
 (e.g. T1059.001 PowerShell, T1136 account creation), find the events in Kibana, and write
 the first detection queries plus a one-page incident report.
