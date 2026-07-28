@@ -10,6 +10,9 @@ A small Active Directory lab, attacked with real ATT&CK tradecraft and defended 
 ### [Project 2 - Live threat-intel honeypot](./project-2-honeypot/) *(later)*
 Internet-facing honeypots feeding a Python enrichment pipeline, a live dashboard, and monthly CTI reports.
 
+### [Writeups from THM CTF Rooms](./writeups/) 
+Write-ups regarding TryHackMe CTFs and how to approach them across various topics.
+
 ## ATT&CK coverage
 
 _A coloured ATT&CK Navigator layer will live here once the first detections land._
