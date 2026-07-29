@@ -11,6 +11,7 @@ The goal here isn't a walkthrough you can copy-paste. It's a record of *how* I a
 | Room | Platform | Date | Difficulty | Focus | Writeup |
 |------|----------|------|------------|-------|---------|
 | Room 404 | TryHackMe | 2026-07-28 | — | Web / Enumeration | [Read](./tryhackme/room-404.md) |
+| Complimentary | TryHackMe | 2026-07-29 | — | Cloud (AWS) / Web | [Read](./tryhackme/complimentary.md) |
 
 ---
 
@@ -21,6 +22,7 @@ writeups/
 ├── README.md            # this file
 ├── tryhackme/
 │   └── room-404.md
+|   └── complimentary.md
 ├── hackthebox/
 └── assets/              # screenshots, diagrams
 ```
