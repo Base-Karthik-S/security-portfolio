@@ -10,10 +10,11 @@ The goal here isn't a walkthrough you can copy-paste. It's a record of *how* I a
 
 | Room | Platform | Date | Difficulty | Focus | Writeup |
 |------|----------|------|------------|-------|---------|
-| Room 404 | TryHackMe | 2026-07-28 | — | Web / Enumeration | [Read](./tryhackme/room-404.md) |
-| Complimentary | TryHackMe | 2026-07-29 | — | Cloud (AWS) / Web | [Read](./tryhackme/complimentary.md) |
-| Packed Light | TryHackMe | 2026-07-30 | — | Forensics / Cryptography | [Read](./tryhackme/packed-light.md) |
-| Beach Bar | TryHackMe | 2026-07-31 | — | Web / Boot2Root | [Read](./tryhackme/beach-bar.md) |
+| Room 404 | TryHackMe | 2026-07-28 | Easy | Web / Enumeration | [Read](./tryhackme/room-404.md) |
+| Complimentary | TryHackMe | 2026-07-29 | Easy | Cloud (AWS) / Web | [Read](./tryhackme/complimentary.md) |
+| Packed Light | TryHackMe | 2026-07-30 | Easy | Forensics / Cryptography | [Read](./tryhackme/packed-light.md) |
+| Beach Bar | TryHackMe | 2026-07-31 | Easy | Web / Boot2Root | [Read](./tryhackme/beach-bar.md) |
+| The Silent Transfer | TryHackMe | 2026-07-31 | Medium | Blue Team / Forensics | [Read](./tryhackme/the-silent-transfer.md) |
 
 ---
 
@@ -27,6 +28,7 @@ writeups/
 |   └── complimentary.md
 |   └── packed-light.md
 |   └── beach-bar.md
+|   └── the-silent-transfer.md
 ├── hackthebox/
 └── assets/              # screenshots, diagrams
 ```
