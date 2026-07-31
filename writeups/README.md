@@ -49,8 +49,6 @@ Every writeup follows the same skeleton so they stay comparable and easy to skim
 6. **Remediation** — how a defender would fix or detect this
 7. **Key Takeaways** — what I learned, tools added to the kit, mistakes worth not repeating
 
-There's a blank copy in [`_template.md`](./_template.md) if you want the skeleton.
-
 ---
 
 ## Tooling
