@@ -15,6 +15,7 @@ The goal here isn't a walkthrough you can copy-paste. It's a record of *how* I a
 | Packed Light | TryHackMe | 2026-07-30 | Easy | Forensics / Cryptography | [Read](./tryhackme/packed-light.md) |
 | Beach Bar | TryHackMe | 2026-07-31 | Easy | Web / Boot2Root | [Read](./tryhackme/beach-bar.md) |
 | The Silent Transfer | TryHackMe | 2026-07-31 | Medium | Blue Team / Forensics | [Read](./tryhackme/the-silent-transfer.md) |
+| Overhead at Breakfast | TryHackMe | 2026-08-01 | Easy | OSINT | [Read](./tryhackme/overhead-at-breakfast.md) |
 
 ---
 
@@ -29,6 +30,7 @@ writeups/
 |   └── packed-light.md
 |   └── beach-bar.md
 |   └── the-silent-transfer.md
+|   └── overhead-at-breakfast.md
 ├── hackthebox/
 └── assets/              # screenshots, diagrams
 ```
