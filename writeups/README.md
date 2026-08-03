@@ -17,6 +17,7 @@ The goal here isn't a walkthrough you can copy-paste. It's a record of *how* I a
 | The Silent Transfer | TryHackMe | 2026-07-31 | Medium | Blue Team / Forensics | [Read](./tryhackme/the-silent-transfer.md) |
 | Overhead at Breakfast | TryHackMe | 2026-08-01 | Easy | OSINT | [Read](./tryhackme/overhead-at-breakfast.md) |
 | Do Not Disturb | TryHackMe | 2026-08-02 | Medium | Web / Boot2Root | [Read](./tryhackme/do-not-disturb.md) |
+| Towel on the Sunbed | TryHackMe | 2026-08-03 | Medium | Web | [Read](./tryhackme/towel-on-the-sunbed.md) |
 
 ---
 
@@ -33,6 +34,7 @@ writeups/
 |   └── the-silent-transfer.md
 |   └── overhead-at-breakfast.md
 |   └── do-not-disturb.md
+|   └── towel-on-the-sunbed.md
 ├── hackthebox/
 └── assets/              # screenshots, diagrams
 ```
