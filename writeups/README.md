@@ -18,6 +18,7 @@ The goal here isn't a walkthrough you can copy-paste. It's a record of *how* I a
 | Overhead at Breakfast | TryHackMe | 2026-08-01 | Easy | OSINT | [Read](./tryhackme/overhead-at-breakfast.md) |
 | Do Not Disturb | TryHackMe | 2026-08-02 | Medium | Web / Boot2Root | [Read](./tryhackme/do-not-disturb.md) |
 | Towel on the Sunbed | TryHackMe | 2026-08-03 | Medium | Web | [Read](./tryhackme/towel-on-the-sunbed.md) |
+| CryptoCabana | TryHackMe | 2026-08-04 | Medium | Cloud | [Read](./tryhackme/cryptocabana.md) |
 
 ---
 
@@ -35,6 +36,7 @@ writeups/
 |   └── overhead-at-breakfast.md
 |   └── do-not-disturb.md
 |   └── towel-on-the-sunbed.md
+|   └── cryptocabana.md
 ├── hackthebox/
 └── assets/              # screenshots, diagrams
 ```
