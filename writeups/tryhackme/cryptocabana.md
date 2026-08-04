@@ -1,9 +1,9 @@
 # TryHackMe – CryptoCabana Write-up (Cloud)
 
-**Category:** Cloud
-**Difficulty:** Medium
-**Platform:** TryHackMe
-**Flag:** `THM{Redacted}`
+- **Category:** Cloud
+- **Difficulty:** Medium
+- **Platform:** TryHackMe
+- **Flag:** `THM{Redacted}`
 
 ---
 
