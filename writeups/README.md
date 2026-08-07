@@ -21,6 +21,7 @@ The goal here isn't a walkthrough you can copy-paste. It's a record of *how* I a
 | CryptoCabana | TryHackMe | 2026-08-04 | Medium | Cloud | [Read](./tryhackme/cryptocabana.md) |
 | The Hollow Shell | TryHackMe | 2026-08-05 | Medium | Web | [Read](./tryhackme/the-hollow-shell.md) |
 | Infinity Pool | TryHackMe | 2026-08-06 | Medium | Boot2Root | [Read](./tryhackme/infinity-pool.md) |
+| After Hours | TryHackMe | 2026-08-07 | Medium | Forensics | [Read](./tryhackme/after-hours.md) |
 
 ---
 
@@ -41,6 +42,7 @@ writeups/
 |   └── cryptocabana.md
 |   └── the-hollow-shell.md
 |   └── infinity-pool.md
+|   └── after-hours.md
 ├── hackthebox/
 └── assets/              # screenshots, diagrams
 ```
