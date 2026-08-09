@@ -23,6 +23,7 @@ The goal here isn't a walkthrough you can copy-paste. It's a record of *how* I a
 | Infinity Pool | TryHackMe | 2026-08-06 | Medium | Boot2Root | [Read](./tryhackme/infinity-pool.md) |
 | After Hours | TryHackMe | 2026-08-07 | Medium | Forensics | [Read](./tryhackme/after-hours.md) |
 | The Guestbook | TryHackMe | 2026-08-08 | Medium | Web / AI | [Read](./tryhackme/the-guestbook.md) |
+| Management Wants A Word | TryHackMe | 2026-08-09 | Hard | Forensics / Windows / Cryptography | [Read](./tryhackme/management-wants-a-word.md) |
 
 ---
 
@@ -45,6 +46,7 @@ writeups/
 |   └── infinity-pool.md
 |   └── after-hours.md
 |   └── the-guestbook.md
+|   └── management-wants-a-word.md
 ├── hackthebox/
 └── assets/              # screenshots, diagrams
 ```
