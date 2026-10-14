@@ -1,0 +1,44 @@
+title: Scheduled Task Created via schtasks.exe (process creation)
+id: 64c43cb4-c706-4403-888c-2d7c319e71a7
+status: experimental
+description: >
+  Detects schtasks.exe launched with the /create switch (Sysmon EID 1). Complements the
+  Security 4698 rule by adding the task name, action, trigger, parent process and actor
+  from the command line. It does NOT cover tasks registered through PowerShell cmdlets
+  (Register-ScheduledTask) or the COM API, which never spawn schtasks.exe; the 4698 rule
+  covers those. Matches on the single token /create, so it is immune to the doubled
+  whitespace seen in the lab (cmd.exe-launched commands logged as "SCHTASKS  /Create").
+  Elastic conversion note: the Lucene conversion is case-sensitive on process.command_line.
+  Searched as */create* it found nothing, while */Create* found the observed event (tested
+  in Discover on 2026/10/14). Convert with the EQL backend (like~ is case-insensitive)
+  rather than Lucene. Abbreviated switches (/cr) and the - prefix are not yet tested.
+references:
+  - https://attack.mitre.org/techniques/T1053/005/
+author: Karthik S
+date: 2026/10/14
+tags:
+  - attack.execution
+  - attack.persistence
+  - attack.privilege_escalation
+  - attack.t1053.005
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection_img:
+    - Image|endswith: '\schtasks.exe'
+    - OriginalFileName: 'schtasks.exe'
+  selection_cmd:
+    CommandLine|contains:
+      - '/create'
+      - '-create'
+  condition: selection_img and selection_cmd
+fields:
+  - CommandLine
+  - ParentImage
+  - ParentCommandLine
+  - User
+falsepositives:
+  - Installers and management tooling (SCCM, Intune agents, updaters) creating tasks
+  - Administrator scripts; baseline by ParentImage and User before alerting
+level: medium

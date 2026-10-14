@@ -1,0 +1,38 @@
+title: Scheduled Task Created (Security 4698)
+id: 26e3b66c-85fe-4ab9-be9a-6bea19abf951
+status: experimental
+description: >
+  Detects creation of any scheduled task via Windows Security Event 4698. This is the
+  resilient rule for T1053.005: it fires regardless of the tool used. Validated in the lab
+  for both schtasks.exe /Create (Atomic Red Team test 2) and the PowerShell
+  Register-ScheduledTask cmdlet (test 4), which never launches schtasks.exe and so is
+  invisible to a process-creation rule. Requires the "Other Object Access Events" audit
+  subcategory (success) to be enabled, otherwise 4698 is never written. The event carries
+  no process or command line; correlate with Sysmon by SubjectLogonId and timestamp.
+references:
+  - https://attack.mitre.org/techniques/T1053/005/
+  - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1053.005/T1053.005.md
+author: Karthik S
+date: 2026/10/14
+tags:
+  - attack.execution
+  - attack.persistence
+  - attack.privilege_escalation
+  - attack.t1053.005
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4698
+  condition: selection
+fields:
+  - TaskName
+  - SubjectUserName
+  - SubjectLogonId
+  - TaskContent
+falsepositives:
+  - Software installers and updaters that register tasks (browsers, EDR agents, backup tools)
+  - Administrators creating maintenance tasks inside a change window
+  - Candidate tuning, not yet validated - excluding Microsoft-path tasks created by the machine account, accepting that an attacker running as SYSTEM could hide a task under that path
+level: medium
