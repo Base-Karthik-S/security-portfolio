@@ -1,0 +1,99 @@
+{
+  "name": "Project 1 Home SOC - detection coverage",
+  "versions": {
+    "attack": "18",
+    "navigator": "5.1.0",
+    "layer": "4.5"
+  },
+  "domain": "enterprise-attack",
+  "description": "Techniques emulated with Atomic Red Team against CLIENT01 and detected with Sigma rules in Elastic. Green = detection validated against lab telemetry, with an incident report.",
+  "filters": {
+    "platforms": [
+      "Windows"
+    ]
+  },
+  "sorting": 0,
+  "layout": {
+    "layout": "side",
+    "aggregateFunction": "average",
+    "showID": true,
+    "showName": true,
+    "showAggregateScores": false,
+    "countUnscored": false,
+    "expandedSubtechniques": "annotated"
+  },
+  "hideDisabled": false,
+  "techniques": [
+    {
+      "techniqueID": "T1059.001",
+      "tactic": "execution",
+      "color": "#31a354",
+      "comment": "IR-2026-001. Encoded PowerShell: alias-aware regex plus WmiPrvSE.exe parent clause. Sysmon EID 1.",
+      "enabled": true,
+      "metadata": [],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1136.001",
+      "tactic": "persistence",
+      "color": "#31a354",
+      "comment": "IR-2026-002. Local account creation: Security 4720 (primary) plus Sysmon net.exe /add.",
+      "enabled": true,
+      "metadata": [],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1053.005",
+      "tactic": "execution",
+      "color": "#31a354",
+      "comment": "IR-2026-003. Scheduled task: Security 4698 (primary, both schtasks and PowerShell cmdlet routes) plus Sysmon schtasks /create.",
+      "enabled": true,
+      "metadata": [],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1053.005",
+      "tactic": "persistence",
+      "color": "#31a354",
+      "comment": "IR-2026-003. Scheduled task: Security 4698 (primary, both schtasks and PowerShell cmdlet routes) plus Sysmon schtasks /create.",
+      "enabled": true,
+      "metadata": [],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1053.005",
+      "tactic": "privilege-escalation",
+      "color": "#31a354",
+      "comment": "IR-2026-003. Scheduled task: Security 4698 (primary, both schtasks and PowerShell cmdlet routes) plus Sysmon schtasks /create.",
+      "enabled": true,
+      "metadata": [],
+      "links": [],
+      "showSubtechniques": true
+    }
+  ],
+  "gradient": {
+    "colors": [
+      "#ffffff",
+      "#31a354"
+    ],
+    "minValue": 0,
+    "maxValue": 1
+  },
+  "legendItems": [
+    {
+      "label": "Detection validated + incident report",
+      "color": "#31a354"
+    }
+  ],
+  "metadata": [],
+  "links": [],
+  "showTacticRowBackground": false,
+  "tacticRowBackground": "#dddddd",
+  "selectTechniquesAcrossTactics": true,
+  "selectSubtechniquesWithParent": false,
+  "selectVisibleTechniques": false
+}
