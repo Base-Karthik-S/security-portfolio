@@ -10,6 +10,8 @@ SIEM), a **domain-joined Windows client** wired into the same telemetry pipeline
 **first three detections**: attacker techniques run against the client, hunted in the SIEM,
 tuned into resilient rules, and written up as one-page incident reports.
 
+**Write-up:** [Building a home SOC lab, part 1: attacking my own network and writing the detections](https://medium.com/@phoenix01eve/building-a-home-soc-lab-part-1-attacking-my-own-network-and-writing-the-detections-bd22e0ef26a9) (Medium)
+
 ---
 
 ## What this demonstrates
@@ -362,7 +364,7 @@ project-1-home-soc/
 - [x] Fleet Server stood up; Elastic Agent enrolled on DC01 (Healthy)
 - [x] Own `4624` logon traced from `runas` to Kibana; README, diagram, and screenshots committed
 
-**Week 3 — CLIENT01 as a target, and first detections.** 🔄 In progress (3 of 3 detections done; write-up remaining).
+**Week 3 — CLIENT01 as a target, and first detections.** ✅ Complete (3 of 3 detections done, write-up published).
 
 - [x] CLIENT01 built, domain-joined `lab.local`, Sysmon + Elastic Agent enrolled (Healthy); `4624` + Sysmon EID 1 verified for `host.name:"client01"`
 - [x] Atomic Red Team installed on CLIENT01; clean pre-attack snapshot taken
@@ -370,7 +372,7 @@ project-1-home-soc/
 - [x] **T1136.001** (local account creation) — detected via Security `4720` + Sysmon `net … /add`; failed attempt and PowerShell route both analysed; incident report written
 - [x] **T1053.005** (scheduled task) — detected via Security `4698` (both the `schtasks.exe` and PowerShell cmdlet routes) + Sysmon `schtasks /create`; incident report written
 - [x] ATT&CK coverage layer ([`attack-navigator.json`](./attack-navigator.json))
-- [ ] Blog post #1
+- [x] Blog post #1: [Building a home SOC lab, part 1](https://medium.com/@phoenix01eve/building-a-home-soc-lab-part-1-attacking-my-own-network-and-writing-the-detections-bd22e0ef26a9)
 
 **Later weeks:** real Active Directory tradecraft (Kerberoasting, AS-REP roasting, password
 spraying), credential dumping and C2 detection, then a coverage dashboard and packaging.
