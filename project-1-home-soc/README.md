@@ -37,6 +37,8 @@ tuned into resilient rules, and written up as one-page incident reports.
 | Local account creation | T1136.001 | [`T1136.001-local-account-created-4720.yml`](./detections/T1136.001-local-account-created-4720.yml), [`T1136.001-net-user-add-process.yml`](./detections/T1136.001-net-user-add-process.yml) | [IR-2026-002](./incident-reports/T1136.001-local-account-creation.md) | A process-only rule is blind to `New-LocalUser`; a full-event-chain rule misses a failed attempt |
 | Scheduled task persistence | T1053.005 | [`T1053.005-scheduled-task-created-4698.yml`](./detections/T1053.005-scheduled-task-created-4698.yml), [`T1053.005-schtasks-create-process.yml`](./detections/T1053.005-schtasks-create-process.yml) | [IR-2026-003](./incident-reports/T1053.005-scheduled-task-persistence.md) | A `schtasks.exe` process rule is blind to `Register-ScheduledTask`; a converted `contains` query was case-sensitive and missed `/Create` |
 
+The same coverage as an ATT&CK Navigator layer: [`attack-navigator.json`](./attack-navigator.json). Load it at [mitre-attack.github.io/attack-navigator](https://mitre-attack.github.io/attack-navigator/) via *Open Existing Layer → Upload from local*.
+
 ---
 
 ## Architecture at a glance
@@ -299,6 +301,7 @@ values only. Test-account passwords shown in incident reports are throwaway, lab
 ```
 project-1-home-soc/
 ├── README.md                     # this file
+├── attack-navigator.json         # ATT&CK Navigator coverage layer
 ├── docs/
 │   ├── 01-lab-build-elk01.md     # ELK01 build walkthrough
 │   ├── 02-sysmon-dc01.md         # Sysmon install + verification
@@ -359,14 +362,15 @@ project-1-home-soc/
 - [x] Fleet Server stood up; Elastic Agent enrolled on DC01 (Healthy)
 - [x] Own `4624` logon traced from `runas` to Kibana; README, diagram, and screenshots committed
 
-**Week 3 — CLIENT01 as a target, and first detections.** 🔄 In progress (3 of 3 detections done; close-out remaining).
+**Week 3 — CLIENT01 as a target, and first detections.** 🔄 In progress (3 of 3 detections done; write-up remaining).
 
 - [x] CLIENT01 built, domain-joined `lab.local`, Sysmon + Elastic Agent enrolled (Healthy); `4624` + Sysmon EID 1 verified for `host.name:"client01"`
 - [x] Atomic Red Team installed on CLIENT01; clean pre-attack snapshot taken
 - [x] **T1059.001** (encoded PowerShell) — detected, decoded, rule tuned for the `-E` alias gap, incident report written
 - [x] **T1136.001** (local account creation) — detected via Security `4720` + Sysmon `net … /add`; failed attempt and PowerShell route both analysed; incident report written
 - [x] **T1053.005** (scheduled task) — detected via Security `4698` (both the `schtasks.exe` and PowerShell cmdlet routes) + Sysmon `schtasks /create`; incident report written
-- [ ] Update ATT&CK coverage (Navigator layer); blog post #1
+- [x] ATT&CK coverage layer ([`attack-navigator.json`](./attack-navigator.json))
+- [ ] Blog post #1
 
 **Later weeks:** real Active Directory tradecraft (Kerberoasting, AS-REP roasting, password
 spraying), credential dumping and C2 detection, then a coverage dashboard and packaging.
