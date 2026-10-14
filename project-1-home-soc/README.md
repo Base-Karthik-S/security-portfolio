@@ -7,7 +7,7 @@ the detections, and the incident reports.
 
 It now covers the **lab foundation** (a Windows Active Directory domain and an Elastic
 SIEM), a **domain-joined Windows client** wired into the same telemetry pipeline, and the
-**first two detections**: attacker techniques run against the client, hunted in the SIEM,
+**first three detections**: attacker techniques run against the client, hunted in the SIEM,
 tuned into resilient rules, and written up as one-page incident reports.
 
 ---
@@ -35,7 +35,7 @@ tuned into resilient rules, and written up as one-page incident reports.
 |---|---|---|---|---|
 | PowerShell encoded command | T1059.001 | [`T1059.001-powershell-encoded-command.yml`](./detections/T1059.001-powershell-encoded-command.yml) | [IR-2026-001](./incident-reports/T1059.001-powershell-encoded-command.md) | A literal `Encode` match missed the `-E` alias |
 | Local account creation | T1136.001 | [`T1136.001-local-account-created-4720.yml`](./detections/T1136.001-local-account-created-4720.yml), [`T1136.001-net-user-add-process.yml`](./detections/T1136.001-net-user-add-process.yml) | [IR-2026-002](./incident-reports/T1136.001-local-account-creation.md) | A process-only rule is blind to `New-LocalUser`; a full-event-chain rule misses a failed attempt |
-| Scheduled task persistence | T1053.005 | drafted | planned | — |
+| Scheduled task persistence | T1053.005 | [`T1053.005-scheduled-task-created-4698.yml`](./detections/T1053.005-scheduled-task-created-4698.yml), [`T1053.005-schtasks-create-process.yml`](./detections/T1053.005-schtasks-create-process.yml) | [IR-2026-003](./incident-reports/T1053.005-scheduled-task-persistence.md) | A `schtasks.exe` process rule is blind to `Register-ScheduledTask`; a converted `contains` query was case-sensitive and missed `/Create` |
 
 ---
 
@@ -167,6 +167,43 @@ tests against CLIENT01 as the same administrator session: `net user /add` (test 
 
 ---
 
+## Third detection: T1053.005 scheduled task persistence
+
+Persistence through a scheduled task (**T1053.005**). I ran two Atomic Red Team tests
+against CLIENT01 from the same administrator session: `schtasks.exe /Create` (test 2) and
+the PowerShell `Register-ScheduledTask` cmdlet (test 4). Again the telemetry was more
+interesting than "task created":
+
+- **Security `4698` fired for both routes**, but carries no process or command line. I link
+  it to the process event by logon session and timestamp (60 ms after `schtasks.exe` for
+  test 2).
+- **The Sysmon `schtasks.exe` hunt returned one event, for test 2 only.** The cmdlet route
+  never launches `schtasks.exe`, so a process-only rule is blind to it.
+- **The PowerShell process event did carry `Register-ScheduledTask`**, but only because
+  the atomic passes the script inline. A `.ps1` file would not show it, and PowerShell
+  Script Block Logging (4104) is not collected yet: a coverage gap recorded in the report.
+- **The `4698` task content showed the persistence intent:** a logon trigger running
+  `calc.exe` as the Administrators group with the highest run level.
+- **A converted query failed silently on case.** Sigma's `contains` is case-insensitive,
+  but the Lucene conversion was case-sensitive on `process.command_line`: `*/create*`
+  found nothing while `*/Create*` found the event. The process rule should be converted
+  with the EQL backend (`like~`, case-insensitive) instead.
+
+![4698 for both task-creation routes](./docs/img/T1053.005-task-creation.png)
+
+![Register-ScheduledTask visible in the PowerShell command line](./docs/img/T1053.005-sysmon-test4.png)
+
+**Two rules, each covering what the other can't:**
+
+- **Security `4698`** is the primary rule: it fires for `schtasks.exe` and cmdlet routes alike.
+- **Process creation** (`schtasks.exe` with `/create`) adds the task name, action, parent
+  process and actor from the command line.
+
+- **Detection rules:** [`4698`](./detections/T1053.005-scheduled-task-created-4698.yml), [`schtasks /create`](./detections/T1053.005-schtasks-create-process.yml)
+- **Incident report:** [`incident-reports/T1053.005-scheduled-task-persistence.md`](./incident-reports/T1053.005-scheduled-task-persistence.md)
+
+---
+
 ## Reproduce it yourself
 
 The full, step-by-step build lives in `docs/`:
@@ -283,7 +320,15 @@ project-1-home-soc/
 │       ├── T1136.001-account-lifecycle-1.png     # PowerShell route: 4720/4722/4738
 │       ├── T1136.001-account-lifecycle-2.png     # net user route: adds 4724
 │       ├── T1136.001-4726-deletions.png          # rollback + cleanup deletions
-│       └── T1136.001-sysmon-net-add.png          # net user /add process creation
+│       ├── T1136.001-sysmon-net-add.png          # net user /add process creation
+│       ├── T1053.005-task-creation.png           # 4698 for the schtasks and cmdlet routes
+│       ├── T1053.005-task-lifecycle.png          # task lifecycle query, 4702 noise
+│       ├── T1053.005-sysmon-test2.png            # schtasks /Create process creation
+│       ├── T1053.005-sysmon-test4.png            # Register-ScheduledTask command line
+│       ├── T1053.005-case-sensitivity-test.png   # */create* vs */Create* result
+│       ├── T1053.005-sysmon-test2-cleanup.png    # cleanup: schtasks /Delete
+│       ├── T1053.005-sysmon-test4-cleanup.png    # cleanup: Unregister-ScheduledTask
+│       └── T1053.005-powershell.png              # cleanup run + empty Get-ScheduledTask
 ├── elk/
 │   ├── docker-compose.yml        # Elasticsearch + Kibana + Fleet Server
 │   ├── .env.example              # required variables (no secrets)
@@ -292,10 +337,13 @@ project-1-home-soc/
 ├── detections/                   # Sigma rules
 │   ├── T1059.001-powershell-encoded-command.yml
 │   ├── T1136.001-local-account-created-4720.yml
-│   └── T1136.001-net-user-add-process.yml
+│   ├── T1136.001-net-user-add-process.yml
+│   ├── T1053.005-scheduled-task-created-4698.yml
+│   └── T1053.005-schtasks-create-process.yml
 └── incident-reports/             # one-page reports per attack
     ├── T1059.001-powershell-encoded-command.md
-    └── T1136.001-local-account-creation.md
+    ├── T1136.001-local-account-creation.md
+    └── T1053.005-scheduled-task-persistence.md
 ```
 
 ---
@@ -311,13 +359,13 @@ project-1-home-soc/
 - [x] Fleet Server stood up; Elastic Agent enrolled on DC01 (Healthy)
 - [x] Own `4624` logon traced from `runas` to Kibana; README, diagram, and screenshots committed
 
-**Week 3 — CLIENT01 as a target, and first detections.** 🔄 In progress (2 of 3 detections done).
+**Week 3 — CLIENT01 as a target, and first detections.** 🔄 In progress (3 of 3 detections done; close-out remaining).
 
 - [x] CLIENT01 built, domain-joined `lab.local`, Sysmon + Elastic Agent enrolled (Healthy); `4624` + Sysmon EID 1 verified for `host.name:"client01"`
 - [x] Atomic Red Team installed on CLIENT01; clean pre-attack snapshot taken
 - [x] **T1059.001** (encoded PowerShell) — detected, decoded, rule tuned for the `-E` alias gap, incident report written
 - [x] **T1136.001** (local account creation) — detected via Security `4720` + Sysmon `net … /add`; failed attempt and PowerShell route both analysed; incident report written
-- [ ] **T1053.005** (scheduled task) — detect via Security `4698` + Sysmon `schtasks /create`
+- [x] **T1053.005** (scheduled task) — detected via Security `4698` (both the `schtasks.exe` and PowerShell cmdlet routes) + Sysmon `schtasks /create`; incident report written
 - [ ] Update ATT&CK coverage (Navigator layer); blog post #1
 
 **Later weeks:** real Active Directory tradecraft (Kerberoasting, AS-REP roasting, password
