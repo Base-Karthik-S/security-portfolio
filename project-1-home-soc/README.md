@@ -1,4 +1,4 @@
-# Project 1 - Attack & Defend: A Home SOC with a Public Detection Portfolio
+# Project 1 — Attack & Defend: A Home SOC with a Public Detection Portfolio
 
 A small, enterprise-shaped lab where I stand up realistic telemetry, attack the
 environment with real adversary tradecraft, and then **detect, triage, and document**
@@ -7,8 +7,8 @@ the detections, and the incident reports.
 
 It now covers the **lab foundation** (a Windows Active Directory domain and an Elastic
 SIEM), a **domain-joined Windows client** wired into the same telemetry pipeline, and the
-**first detection**: an attacker technique run against the client, hunted in the SIEM,
-tuned into a resilient rule, and written up as a one-page incident report.
+**first two detections**: attacker techniques run against the client, hunted in the SIEM,
+tuned into resilient rules, and written up as one-page incident reports.
 
 ---
 
@@ -17,15 +17,25 @@ tuned into a resilient rule, and written up as a one-page incident report.
 - Building enterprise-style infrastructure from scratch: a promoted **Active Directory
   domain controller**, a domain-joined **Windows 11 client**, and a single-node
   **Elastic Stack** SIEM.
-- Understanding **what a SOC actually sees**: Windows Security event IDs and Sysmon
+- Understanding **what a SOC actually sees** — Windows Security event IDs and Sysmon
   process telemetry, normalised into Elastic Common Schema (ECS).
 - Standing up a modern log pipeline with **Fleet-managed Elastic Agent** over TLS,
   including the certificate, encryption-key, and output-trust details that make it work.
 - **Detection engineering, not just detection:** running an attack, hunting the telemetry
   it produced, finding where a naive rule *fails*, and tuning it so evasion doesn't slip
-  through, then documenting the whole loop as an incident report.
+  through — then documenting the whole loop as an incident report.
 - The discipline that matters day one: **no secrets in the repo**, reproducible builds,
   and evidence-backed documentation.
+
+---
+
+## Detection coverage so far
+
+| Technique | ATT&CK | Rules | Incident report | Gap the attack exposed |
+|---|---|---|---|---|
+| PowerShell encoded command | T1059.001 | [`T1059.001-powershell-encoded-command.yml`](./detections/T1059.001-powershell-encoded-command.yml) | [IR-2026-001](./incident-reports/T1059.001-powershell-encoded-command.md) | A literal `Encode` match missed the `-E` alias |
+| Local account creation | T1136.001 | [`T1136.001-local-account-created-4720.yml`](./detections/T1136.001-local-account-created-4720.yml), [`T1136.001-net-user-add-process.yml`](./detections/T1136.001-net-user-add-process.yml) | [IR-2026-002](./incident-reports/T1136.001-local-account-creation.md) | A process-only rule is blind to `New-LocalUser`; a full-event-chain rule misses a failed attempt |
+| Scheduled task persistence | T1053.005 | drafted | planned | — |
 
 ---
 
@@ -43,7 +53,7 @@ Three VMs on a single 16 GB laptop, connected over VMware's **VMnet8 NAT** netwo
 | **CLIENT01** | Windows 11 Enterprise (eval) | `192.168.64.30` | Domain-joined client and **attack target**; Sysmon; Elastic Agent | Built, instrumented, shipping |
 
 > The lab runs on **VMware Workstation Pro** rather than Hyper-V (the host is Windows 11
-> **Home**), which also gives clean **snapshots**, I snapshot a known-good baseline before
+> **Home**), which also gives clean **snapshots** — I snapshot a known-good baseline before
 > every attack and roll back afterward. Elastic runs in **Docker inside the Ubuntu guest**,
 > not Docker Desktop on the host, so the Windows VMs keep VMware's native hypervisor.
 >
@@ -72,9 +82,9 @@ Three VMs on a single 16 GB laptop, connected over VMware's **VMnet8 NAT** netwo
 
 Each Windows endpoint runs an Elastic Agent that uses two separate TLS connections to ELK01:
 
-- **Control plane: Fleet Server on `:8220` (TLS).** The agent enrolls against Fleet,
+- **Control plane — Fleet Server on `:8220` (TLS).** The agent enrolls against Fleet,
   receives its policy, and reports health.
-- **Data plane: Elasticsearch on `:9200` (TLS).** The agent ships collected events
+- **Data plane — Elasticsearch on `:9200` (TLS).** The agent ships collected events
   directly into Elasticsearch, into `logs-*` data streams.
 
 Both endpoints carry the same two integrations, on their own policies (`dc01-windows`,
@@ -92,13 +102,13 @@ requirement for Fleet to function.
 
 ## First detection: T1059.001 PowerShell encoded command
 
-Week 3 closes the full loop: **attack → log → detect → tune → document**. I ran an
+Week 3 closes the full loop — **attack → log → detect → tune → document**. I ran an
 Atomic Red Team test for **T1059.001 (Command and Scripting Interpreter: PowerShell)**
 against CLIENT01: PowerShell launched with an *encoded command* switch, the classic
 obfuscation trick that hides what actually ran inside a Base64 blob.
 
 **The detection, and the gap it exposed.** My first hunt filtered the command line on the
-literal string `Encode` and missed the real event. The atomic launched PowerShell using
+literal string `Encode` — and missed the real event. The atomic launched PowerShell using
 the single-letter alias **`-E`** (a valid abbreviation of `-EncodedCommand`), which never
 contains the string "Encode." A rule written against the full switch name is blind to it.
 Broadening the hunt revealed the true event: `powershell.exe -NoProfile -E <base64>`,
@@ -107,7 +117,7 @@ spawned by **`WmiPrvSE.exe`** (i.e. via WMI).
 ![Discover: encoded PowerShell child process, WMI parent](./docs/img/T1059.001-discover-child-process.png)
 
 Decoding the Base64 (PowerShell uses UTF-16LE) resolved it to a benign marker the atomic
-writes to prove execution confirming this as controlled test activity:
+writes to prove execution — confirming this as controlled test activity:
 
 ![Decoded payload: Write-Host GUID marker](./docs/img/T1059.001-decoded-payload.png)
 
@@ -115,7 +125,7 @@ writes to prove execution confirming this as controlled test activity:
 regex** that matches `-e` followed by any valid prefix of `ncodedcommand` (`-e`, `-en`,
 `-enc`, `-ec` … `-EncodedCommand`, case-insensitive), plus a **behavioural backstop** that
 flags PowerShell whose parent is `WmiPrvSE.exe` regardless of how the switch is spelled.
-That tuning, closing an evasion gap I found by attacking my own lab, is the point of the
+That tuning — closing an evasion gap I found by attacking my own lab — is the point of the
 exercise, and exactly the reasoning a SOC role probes for.
 
 - **Detection rule:** [`detections/T1059.001-powershell-encoded-command.yml`](./detections/T1059.001-powershell-encoded-command.yml)
@@ -123,20 +133,54 @@ exercise, and exactly the reasoning a SOC role probes for.
 
 ---
 
+## Second detection: T1136.001 local account creation
+
+Persistence by creating a new local account (**T1136.001**). I ran two Atomic Red Team
+tests against CLIENT01 as the same administrator session: `net user /add` (test 4) and
+`New-LocalUser` (test 5). The telemetry told a more interesting story than "account created":
+
+- **The first `net user /add` failed.** The atomic's default password contains the
+  username, so Windows rejected it on complexity. It still left evidence: a Security
+  **`4720`** (account created) followed **5 ms later** by a **`4726`** (account deleted),
+  plus the `net.exe` / `net1.exe` process-creates in Sysmon. A rule that waits for the full
+  `4720 → 4722 → 4738` chain would never fire on it.
+- **The PowerShell route spawned no `net.exe` at all.** `New-LocalUser` produced `4720`,
+  `4722` and `4738` but no `net … /add` process, so a Sysmon-only rule is blind to it.
+- **Only the `net user` route produced `4724`** (password reset), and only it exposed the
+  password, in cleartext, in `process.command_line`.
+- **Command lines are logged with a double space** (`net  user /add`) when launched from
+  cmd.exe, so a literal `net user /add` match would be fragile.
+
+![4720 events with actor and logon session](./docs/img/T1136.001-4720-three-events.png)
+
+![Sysmon net user /add process creation](./docs/img/T1136.001-sysmon-net-add.png)
+
+**The result is a pair of rules, each covering what the other can't:**
+
+- **Security `4720`** is the primary rule: it fires for `net user`, `New-LocalUser` and failed
+  attempts alike (machine accounts excluded).
+- **Process creation** (`net.exe`/`net1.exe` with `user` and `/add` as separate,
+  whitespace-tolerant terms) adds the actor's intent, parent process and any cleartext password.
+
+- **Detection rules:** [`4720`](./detections/T1136.001-local-account-created-4720.yml), [`net user /add`](./detections/T1136.001-net-user-add-process.yml)
+- **Incident report:** [`incident-reports/T1136.001-local-account-creation.md`](./incident-reports/T1136.001-local-account-creation.md)
+
+---
+
 ## Reproduce it yourself
 
 The full, step-by-step build lives in `docs/`:
 
-1. **[`docs/01-lab-build-elk01.md`](./docs/01-lab-build-elk01.md)** - build ELK01: Ubuntu
+1. **[`docs/01-lab-build-elk01.md`](./docs/01-lab-build-elk01.md)** — build ELK01: Ubuntu
    VM → Docker Engine → single-node Elastic Stack 9.4.3 (security + TLS, heap-capped) →
    verify Kibana loads.
-2. **[`docs/02-sysmon-dc01.md`](./docs/02-sysmon-dc01.md)** - install Sysmon on DC01 with
+2. **[`docs/02-sysmon-dc01.md`](./docs/02-sysmon-dc01.md)** — install Sysmon on DC01 with
    the SwiftOnSecurity config and confirm EID 1 in `Microsoft-Windows-Sysmon/Operational`.
-3. **[`docs/03-fleet-dc01.md`](./docs/03-fleet-dc01.md)** - add Fleet Server to the compose
+3. **[`docs/03-fleet-dc01.md`](./docs/03-fleet-dc01.md)** — add Fleet Server to the compose
    stack and enroll the Elastic Agent on DC01. Includes an interview-ready **"Gotchas"**
    section (cert SANs for the ELK IP, absolute cert paths, Kibana encryption keys, and
    making the Fleet default output trust the lab CA).
-4. **[`docs/04-client01-build.md`](./docs/04-client01-build.md)** - build and domain-join
+4. **[`docs/04-client01-build.md`](./docs/04-client01-build.md)** — build and domain-join
    CLIENT01, install Sysmon, enroll the Elastic Agent, and verify its telemetry
    (`4624` + Sysmon EID 1 for `host.name:"client01"`). Includes a **"Gotchas"** section
    (clock-skew → Kerberos, DNS fail-over with the DC off, large agent-zip download,
@@ -147,7 +191,7 @@ The Docker starter kit is in **[`elk/`](./elk/)**: `docker-compose.yml`, `.env.e
 then bring the stack up.
 
 **Prerequisites:** a host with hardware virtualisation enabled, ~16 GB RAM (practical
-floor, keep idle VMs powered off), and ~80 GB free disk (use thin-provisioned disks).
+floor — keep idle VMs powered off), and ~80 GB free disk (use thin-provisioned disks).
 
 > For live endpoint telemetry, ELK01 plus the endpoint you're working with must be running
 > together. For an attack-and-detect cycle, that's **CLIENT01 + ELK01**; DC01 only needs to
@@ -158,7 +202,7 @@ floor, keep idle VMs powered off), and ~80 GB free disk (use thin-provisioned di
 ## Verifying the pipeline: from action to searchable event
 
 The lab-foundation milestone was proving I can see my own activity as SOC telemetry. I
-traced a single action end to end, from the command that caused it to the event in the SIEM.
+traced a single action end to end — from the command that caused it to the event in the SIEM.
 
 **1. Generate a logon on DC01.** From an elevated PowerShell I confirmed my identity and
 forced a fresh interactive logon:
@@ -178,7 +222,7 @@ event.code : "4624" and host.name : "dc01" and winlog.event_data.LogonType : "2"
 
 The event at **20:58:28** matches the `runas` above: account `Administrator`,
 `LogonType 2` (interactive), `LogonProcessName User32`, `source.ip 127.0.0.1` (a local
-logon). That timestamp-and-attribute match is the whole point of the milestone, my action
+logon). That timestamp-and-attribute match is the whole point of the milestone — my action
 on DC01 became a queryable event in the SIEM within seconds.
 
 **3. Sysmon telemetry in parallel.** The Windows integration also ships Sysmon, so the same
@@ -197,9 +241,9 @@ report **Healthy** in Fleet, on Stack 9.4.3:
 ![DC01 Elastic Agent healthy in Fleet](./docs/img/healthy-fleet-dc01-elk01.png)
 
 Together this confirms endpoint (Sysmon EID 1) **and** security (Windows 4624) telemetry
-flowing over a healthy, Fleet-managed, TLS pipeline, I can see the lab. CLIENT01 was later
+flowing over a healthy, Fleet-managed, TLS pipeline — I can see the lab. CLIENT01 was later
 brought onto the same pipeline (`client01-windows`) and verified the same way, which is what
-made the first detection above possible.
+made the detections above possible.
 
 ---
 
@@ -209,7 +253,7 @@ No credentials or secrets are committed. The repo `.gitignore` excludes `.env`, 
 generated Fleet **service token**, the Kibana **encryption keys**, and all **TLS certs**
 and stack data. Passwords (Administrator, DSRM, `elastic` / `kibana_system`) are recorded
 **outside** this repo. `.env.example` documents the required variables with placeholder
-values only.
+values only. Test-account passwords shown in incident reports are throwaway, lab-only values.
 
 ---
 
@@ -234,23 +278,31 @@ project-1-home-soc/
 │       ├── Sysmon-EID1-Client01.jpg              # CLIENT01 Sysmon EID 1
 │       ├── cmd-runas&ping-client01.png           # CLIENT01 verification marker
 │       ├── T1059.001-discover-child-process.png  # detected encoded PowerShell (WMI parent)
-│       └── T1059.001-decoded-payload.png         # decoded benign marker
+│       ├── T1059.001-decoded-payload.png         # decoded benign marker
+│       ├── T1136.001-4720-three-events.png       # three 4720s with actor + logon session
+│       ├── T1136.001-account-lifecycle-1.png     # PowerShell route: 4720/4722/4738
+│       ├── T1136.001-account-lifecycle-2.png     # net user route: adds 4724
+│       ├── T1136.001-4726-deletions.png          # rollback + cleanup deletions
+│       └── T1136.001-sysmon-net-add.png          # net user /add process creation
 ├── elk/
 │   ├── docker-compose.yml        # Elasticsearch + Kibana + Fleet Server
 │   ├── .env.example              # required variables (no secrets)
 │   ├── bring-up.sh
 │   └── verify.sh
-├── detections/                   # one Sigma rule per technique
-│   └── T1059.001-powershell-encoded-command.yml
+├── detections/                   # Sigma rules
+│   ├── T1059.001-powershell-encoded-command.yml
+│   ├── T1136.001-local-account-created-4720.yml
+│   └── T1136.001-net-user-add-process.yml
 └── incident-reports/             # one-page reports per attack
-    └── T1059.001-powershell-encoded-command.md
+    ├── T1059.001-powershell-encoded-command.md
+    └── T1136.001-local-account-creation.md
 ```
 
 ---
 
 ## Status & roadmap
 
-**Weeks 1–2: Stand up the lab and prove you can see.** ✅ Complete.
+**Weeks 1–2 — Stand up the lab and prove you can see.** ✅ Complete.
 
 - [x] VMware Workstation Pro installed; virtualisation confirmed
 - [x] DC01 built, promoted to `lab.local` (`Get-ADDomain` verified)
@@ -259,14 +311,14 @@ project-1-home-soc/
 - [x] Fleet Server stood up; Elastic Agent enrolled on DC01 (Healthy)
 - [x] Own `4624` logon traced from `runas` to Kibana; README, diagram, and screenshots committed
 
-**Week 3: CLIENT01 as a target, and first detections.** 🔄 In progress (1 of 3 detections done).
+**Week 3 — CLIENT01 as a target, and first detections.** 🔄 In progress (2 of 3 detections done).
 
 - [x] CLIENT01 built, domain-joined `lab.local`, Sysmon + Elastic Agent enrolled (Healthy); `4624` + Sysmon EID 1 verified for `host.name:"client01"`
 - [x] Atomic Red Team installed on CLIENT01; clean pre-attack snapshot taken
-- [x] **T1059.001** (encoded PowerShell) - detected, decoded, rule tuned for the `-E` alias gap, incident report written
-- [ ] **T1136.001** (local account creation) - detect via Security `4720` + Sysmon `net … /add`
-- [ ] **T1053.005** (scheduled task) - detect via Security `4698` + Sysmon `schtasks /create`
-- [ ] Update ATT&CK coverage; blog post #1
+- [x] **T1059.001** (encoded PowerShell) — detected, decoded, rule tuned for the `-E` alias gap, incident report written
+- [x] **T1136.001** (local account creation) — detected via Security `4720` + Sysmon `net … /add`; failed attempt and PowerShell route both analysed; incident report written
+- [ ] **T1053.005** (scheduled task) — detect via Security `4698` + Sysmon `schtasks /create`
+- [ ] Update ATT&CK coverage (Navigator layer); blog post #1
 
 **Later weeks:** real Active Directory tradecraft (Kerberoasting, AS-REP roasting, password
 spraying), credential dumping and C2 detection, then a coverage dashboard and packaging.
