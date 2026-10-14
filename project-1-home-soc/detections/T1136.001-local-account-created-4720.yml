@@ -1,0 +1,37 @@
+title: Local User Account Created (Security 4720)
+id: 7c1f4a52-3b8e-4d19-a6c0-5e92d8b1f3a7
+status: experimental
+description: >
+  Detects creation of a user account via Windows Security Event 4720. This is the
+  resilient rule for T1136.001: it fires regardless of the creation method (net user /add,
+  New-LocalUser, API/WMI) and also fires for attempts that Windows rolls back (e.g. a
+  password rejected by policy produces a 4720 followed milliseconds later by a 4726).
+  Machine accounts (names ending in $) are excluded. On a workstation or member server
+  any hit is notable; on a domain controller this event also covers domain accounts, so
+  scope or baseline by host role.
+references:
+  - https://attack.mitre.org/techniques/T1136/001/
+author: Karthik S
+date: 2026/10/14
+tags:
+  - attack.persistence
+  - attack.t1136.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4720
+  filter_machine_accounts:
+    TargetUserName|endswith: '$'
+  condition: selection and not filter_machine_accounts
+fields:
+  - TargetUserName
+  - TargetSid
+  - SubjectUserName
+  - SubjectLogonId
+falsepositives:
+  - Legitimate provisioning, imaging or onboarding scripts run by IT
+  - Domain account creation by helpdesk when the rule is applied to a domain controller
+  - Local service accounts created by software installers
+level: medium

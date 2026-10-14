@@ -1,0 +1,37 @@
+title: Account Creation via net user /add (process creation)
+id: e3a9d0b6-81c4-4f27-9b5e-2a6c7d40f918
+status: experimental
+description: >
+  Detects net.exe / net1.exe launched to add a user account. Complements the Security
+  4720 rule by adding the actor's intent, parent process and any cleartext password on the
+  command line. It does NOT cover PowerShell New-LocalUser or API-based creation, which
+  never spawn net.exe; the 4720 rule covers those. Matches the switch order-independently
+  and tolerates repeated whitespace (observed: cmd.exe-launched commands logged as
+  "net  user /add" with a double space).
+  Expect two events per execution (net.exe, then its net1.exe child); de-duplicate downstream.
+references:
+  - https://attack.mitre.org/techniques/T1136/001/
+author: Karthik S
+date: 2026/10/14
+tags:
+  - attack.persistence
+  - attack.t1136.001
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith:
+      - '\net.exe'
+      - '\net1.exe'
+  selection_cmd:
+    CommandLine|re: '(?i)\suser\s.*\s/ad(d)?(\s|$)'
+  condition: selection_img and selection_cmd
+fields:
+  - CommandLine
+  - ParentImage
+  - User
+falsepositives:
+  - Administrator scripts and deployment tools that use net user /add
+  - Imaging and onboarding automation
+level: medium
