@@ -1,0 +1,10 @@
+# T1071.001 simulated C2 beacon, Project 1 home SOC lab (IR-2026-004)
+# Install on ELK01: /var/lib/suricata/rules/local.rules, and list local.rules under
+# rule-files: in /etc/suricata/suricata.yaml. Validate with: sudo suricata -T -c /etc/suricata/suricata.yaml
+#
+# TESTED 15 Oct 2026: fired on every request in the 30-request beacon run and on the
+# single-request tests (fast.log and Kibana, event.dataset "suricata.eve").
+# NAIVE VERSION: matches one fixed user agent, so changing the user agent defeats it.
+#
+# Optional, not applied: add classtype:trojan-activity; before sid: to replace "Classification: (null)".
+alert http $HOME_NET any -> any 8080 (msg:"LAB T1071 beacon - custom user agent"; http.user_agent; content:"LabBeacon/1.0"; sid:1000001; rev:1;)
