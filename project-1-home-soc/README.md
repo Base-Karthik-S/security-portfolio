@@ -6,9 +6,11 @@ each attack the way a SOC analyst would. This repo is the running record: the bu
 the detections, and the incident reports.
 
 It now covers the **lab foundation** (a Windows Active Directory domain and an Elastic
-SIEM), a **domain-joined Windows client** wired into the same telemetry pipeline, and the
-**first three detections**: attacker techniques run against the client, hunted in the SIEM,
-tuned into resilient rules, and written up as one-page incident reports.
+SIEM), a **domain-joined Windows client** wired into the same telemetry pipeline, and
+**four detections**: three attacker techniques run against the client and hunted in host
+telemetry, then a fourth, command-and-control over HTTP and DNS, hunted in **network
+telemetry** from Zeek and Suricata. Each is tuned into a resilient rule where the evidence
+allows, and written up as an incident report that says what was and was not tested.
 
 **Write-up:** [Building a home SOC lab, part 1: attacking my own network and writing the detections](https://medium.com/@phoenix01eve/building-a-home-soc-lab-part-1-attacking-my-own-network-and-writing-the-detections-bd22e0ef26a9) (Medium)
 
@@ -20,12 +22,15 @@ tuned into resilient rules, and written up as one-page incident reports.
   domain controller**, a domain-joined **Windows 11 client**, and a single-node
   **Elastic Stack** SIEM.
 - Understanding **what a SOC actually sees** — Windows Security event IDs and Sysmon
-  process telemetry, normalised into Elastic Common Schema (ECS).
+  process telemetry, plus Zeek and Suricata network telemetry, normalised into Elastic
+  Common Schema (ECS).
 - Standing up a modern log pipeline with **Fleet-managed Elastic Agent** over TLS,
   including the certificate, encryption-key, and output-trust details that make it work.
 - **Detection engineering, not just detection:** running an attack, hunting the telemetry
   it produced, finding where a naive rule *fails*, and tuning it so evasion doesn't slip
   through — then documenting the whole loop as an incident report.
+- **Stating limits honestly:** which checks are hunt scripts rather than SIEM rules, which
+  thresholds rest on one example, and which conversions have not been tested.
 - The discipline that matters day one: **no secrets in the repo**, reproducible builds,
   and evidence-backed documentation.
 
@@ -38,8 +43,17 @@ tuned into resilient rules, and written up as one-page incident reports.
 | PowerShell encoded command | T1059.001 | [`T1059.001-powershell-encoded-command.yml`](./detections/T1059.001-powershell-encoded-command.yml) | [IR-2026-001](./incident-reports/T1059.001-powershell-encoded-command.md) | A literal `Encode` match missed the `-E` alias |
 | Local account creation | T1136.001 | [`T1136.001-local-account-created-4720.yml`](./detections/T1136.001-local-account-created-4720.yml), [`T1136.001-net-user-add-process.yml`](./detections/T1136.001-net-user-add-process.yml) | [IR-2026-002](./incident-reports/T1136.001-local-account-creation.md) | A process-only rule is blind to `New-LocalUser`; a full-event-chain rule misses a failed attempt |
 | Scheduled task persistence | T1053.005 | [`T1053.005-scheduled-task-created-4698.yml`](./detections/T1053.005-scheduled-task-created-4698.yml), [`T1053.005-schtasks-create-process.yml`](./detections/T1053.005-schtasks-create-process.yml) | [IR-2026-003](./incident-reports/T1053.005-scheduled-task-persistence.md) | A `schtasks.exe` process rule is blind to `Register-ScheduledTask`; a converted `contains` query was case-sensitive and missed `/Create` |
+| HTTP beaconing (C2) | T1071.001 | [`T1071-beaconing.yml`](./detections/T1071-beaconing.yml) (Sigma), [`T1071-beaconing.rules`](./detections/suricata/T1071-beaconing.rules) (Suricata), [`T1071-beacon-interval.py`](./detections/hunts/T1071-beacon-interval.py) (hunt script) | [IR-2026-004](./incident-reports/IR-2026-004.md) | The signature is defeated by changing the user agent; the interval check is a hunt script, not a SIEM rule, and SSDP multicast was *more* regular than the beacon |
+| DNS tunnelling (C2) | T1071.004 | [`T1071.004-dns-tunnelling.yml`](./detections/T1071.004-dns-tunnelling.yml) | [IR-2026-004](./incident-reports/IR-2026-004.md) (section 9) | A 40-character label rule also matched six benign Windows TPM-attestation names whose labels (50 and 53) are longer than my tunnel's (52), so no length threshold separates them; it needed a narrow exclusion and a fan-out check |
 
-The same coverage as an ATT&CK Navigator layer: [`attack-navigator.json`](./attack-navigator.json). Load it at [mitre-attack.github.io/attack-navigator](https://mitre-attack.github.io/attack-navigator/) via *Open Existing Layer → Upload from local*.
+> **Validation status.** Rows 1 to 3 were validated by hunting the telemetry in Kibana (the
+> converted-query re-tests are tracked in the incident reports). For rows 4 and 5, the Kibana
+> and ES|QL queries were tested directly, but the **Sigma-to-Elastic conversion of the
+> network rules has not been run**, the DNS rule's exclusion and fan-out hunt are untested over
+> the full window, and the thresholds rest on one beacon, two DNS runs and about 158 distinct
+> benign names.
+
+The same coverage as an ATT&CK Navigator layer: [`attack-navigator.json`](./attack-navigator.json) (T1071.004 is shaded lighter to show its tuning is partly unvalidated). Load it at [mitre-attack.github.io/attack-navigator](https://mitre-attack.github.io/attack-navigator/) via *Open Existing Layer → Upload from local*.
 
 ---
 
@@ -53,7 +67,7 @@ Three VMs on a single 16 GB laptop, connected over VMware's **VMnet8 NAT** netwo
 | Host | OS | IP | Role | Status |
 |---|---|---|---|---|
 | **DC01** | Windows Server 2025 (Desktop Experience) | `192.168.64.10` | `lab.local` Domain Controller (AD DS + DNS); Sysmon; Elastic Agent | Built, promoted, shipping |
-| **ELK01** | Ubuntu Server 24.04 LTS | `192.168.64.20` | Elasticsearch + Kibana + Fleet Server (Docker); later, the Linux attack target | Built, verified, healthy |
+| **ELK01** | Ubuntu Server 24.04 LTS | `192.168.64.20` | Elasticsearch + Kibana + Fleet Server (Docker); **Suricata + Zeek network sensors and a host Elastic Agent**; HTTP listener for the beacon test; later, the Linux attack target | Built, verified, healthy |
 | **CLIENT01** | Windows 11 Enterprise (eval) | `192.168.64.30` | Domain-joined client and **attack target**; Sysmon; Elastic Agent | Built, instrumented, shipping |
 
 > The lab runs on **VMware Workstation Pro** rather than Hyper-V (the host is Windows 11
@@ -63,7 +77,9 @@ Three VMs on a single 16 GB laptop, connected over VMware's **VMnet8 NAT** netwo
 >
 > **RAM discipline (16 GB):** idle VMs stay powered off. All three run together only during
 > an active attack-and-detect cycle; the Elasticsearch JVM heap is capped (~1.5 GB, ample
-> for lab volume).
+> for lab volume). The network-telemetry work ran with **ELK01 and CLIENT01 only**; with
+> the sensors added, ELK01 (5.7 GiB) was down to about 1.1 GiB available, so it may need
+> raising to 7 GB.
 
 ---
 
@@ -76,9 +92,10 @@ Three VMs on a single 16 GB laptop, connected over VMware's **VMnet8 NAT** netwo
 | Windows client | Windows 11 Enterprise (eval) |
 | SIEM host | Ubuntu Server 24.04 LTS |
 | Elastic Stack (Elasticsearch, Kibana) | **9.4.3** (pinned) |
-| Fleet Server / Elastic Agent | **9.4.3** |
+| Fleet Server / Elastic Agent (including the agent on the ELK01 host, x86_64) | **9.4.3** |
 | Endpoint telemetry | Sysmon + SwiftOnSecurity config |
-| Attack simulation | Atomic Red Team |
+| Network telemetry | Suricata (OISF stable PPA) with the ET Open ruleset (53,159 rules loaded); Zeek (openSUSE Build Service package, JSON logs) |
+| Attack simulation | Atomic Red Team; a PowerShell/`curl.exe` beacon loop and a `Resolve-DnsName` loop for the network tests |
 
 ---
 
@@ -97,6 +114,14 @@ Both endpoints carry the same two integrations, on their own policies (`dc01-win
 - **System** → Windows Security channel, including logon events such as **`4624`**,
   account creation **`4720`**, and scheduled-task creation **`4698`**.
 - **Windows** → the `sysmon_operational` channel, including Sysmon **EID 1** (process create).
+
+**Network telemetry** uses the same pipeline from a different source: Suricata
+(`eve.json`) and Zeek (JSON logs) run on ELK01 and watch its `ens33` interface, and an
+**Elastic Agent on the ELK01 host** (policy `elk01-network`, Zeek and Suricata
+integrations) ships them as the datasets `zeek.connection`, `zeek.http`, `zeek.dns` and
+`suricata.eve`. On this VMware NAT setup the sensor also saw CLIENT01's traffic to the
+internet, which it was not party to; CLIENT01-to-DC01 traffic was **not** tested, so the
+tests send traffic *to* ELK01 to stay reproducible.
 
 Analysis happens in the browser against **Kibana on `:5601`** (plain HTTP is fine on the
 private NAT). X-Pack security + TLS are enabled throughout — not decoration, but a hard
@@ -208,6 +233,74 @@ interesting than "task created":
 
 ---
 
+## Fourth detection: T1071 command and control in network telemetry
+
+Everything above was host telemetry. Investigating an earlier scenario showed me the blind
+spot: strong endpoint logs, no network logs. So I put **Suricata and Zeek on ELK01**, shipped
+them through Fleet, and simulated two command-and-control patterns from CLIENT01.
+
+**HTTP beaconing (T1071.001).** A PowerShell loop called an HTTP listener on ELK01 about
+every 60 seconds (±5 s jitter, 30 requests) with a fixed user agent.
+
+- **Both sensors saw all 30 flows:** 30 Suricata alerts (a custom rule on the user agent),
+  30 `zeek.connection` rows and 30 `zeek.http` rows.
+- **The signature is the naive version.** Change the user agent and both the Suricata rule
+  and the Zeek HTTP query go blind.
+- **The behavioural check is a hunt script, not a SIEM rule.** It groups Zeek `conn.log`
+  by source, destination and port and computes the coefficient of variation (sd / mean)
+  of inter-arrival times. Sigma and KQL cannot compute a standard deviation, so I say so
+  rather than imply an in-SIEM detection.
+- **Low variance alone is not a detector.** The beacon scored cv 0.06; SSDP multicast
+  scored 0.00 (*more* regular), while the Elastic Agent scored 0.61 and DNS 1.42 to 2.96.
+  The rule needs a minimum count (10), a multicast exclusion and an allowlist. That
+  threshold rests on **one beacon and five baseline pairs**: supported, not proven.
+
+![Suricata alerts for the beacon](./docs/img/T1071-suricata-alert.png)
+
+![Interval statistics across all pairs](./docs/img/T1071-interval-stddev.png)
+
+**DNS tunnelling (T1071.004).** Two runs of 40 queries with long random labels to a
+non-resolving test domain, sent to ELK01. Both sensors logged every query (240 rows each
+for 40 names, about six rows per name, which fits Windows retries).
+
+- **I found my own generator bug.** `Get-Random -Count 52` on a 36-character pool returns
+  at most 36 values, so run 1 had 36-character labels. Run 2 used sampling with
+  replacement and measured exactly 52. Run 1 is kept in the record.
+- **Total query length was useless:** a benign Windows DC-locator name (72 characters) was
+  longer than the tunnel's 70. I then wrote a rule on a single label of 40 or more
+  characters.
+- **That rule broke on a larger baseline.** Over about an hour it matched six benign names
+  (`vmw-keyid-<40 hex>[-v2].microsoftaik.azure.net`, which look like Windows TPM attestation
+  lookups). Their labels are 50 and 53 characters and the tunnel's is 52, so **no length
+  threshold separates them**. Six of 158 distinct benign names matched. My first 5-minute
+  baseline had missed them.
+- **The fix is tuning, not a cleaner threshold:** an exclusion for the exact parent
+  `.microsoftaik.azure.net`, plus a fan-out hunt (30 or more distinct names under one parent
+  in 5 minutes; 6 benign against 40 for the tunnel). The fan-out threshold is a judgement
+  inside a gap and has not been re-checked over the full window.
+- **A tooling gotcha worth knowing:** ES|QL `RLIKE` rejects a trailing hyphen in a
+  character class (`[A-Za-z0-9_-]`). A Python test passes it, so test regexes in the target
+  engine.
+- **Not used:** entropy. Both generators emit uniform-random labels, so a threshold would be
+  tuned on an artefact.
+
+![Regex test over both runs](./docs/img/T1071.004-regex-test.png)
+
+![The six benign TPM-attestation lookups](./docs/img/T1071.004-benign-tpm-lookups.png)
+
+- **Detection rules:** [`T1071-beaconing.yml`](./detections/T1071-beaconing.yml), [`T1071-beaconing.rules`](./detections/suricata/T1071-beaconing.rules), [`T1071.004-dns-tunnelling.yml`](./detections/T1071.004-dns-tunnelling.yml)
+- **Hunt script:** [`detections/hunts/T1071-beacon-interval.py`](./detections/hunts/T1071-beacon-interval.py)
+- **Incident report:** [`incident-reports/IR-2026-004.md`](./incident-reports/IR-2026-004.md)
+- **Build and gotchas:** [`docs/06-network-telemetry-elk01.md`](./docs/06-network-telemetry-elk01.md)
+
+**Limits, stated up front:** the Sigma-to-Elastic conversion of both network rules is
+untested; the exclusion and the full-window fan-out check are untested; the tunnel queries
+went straight to ELK01 rather than through a resolver; the benign sample is one small
+environment; and six extra tunnel-domain names seen a few minutes before run 2 are
+unexplained.
+
+---
+
 ## Reproduce it yourself
 
 The full, step-by-step build lives in `docs/`:
@@ -226,6 +319,11 @@ The full, step-by-step build lives in `docs/`:
    (`4624` + Sysmon EID 1 for `host.name:"client01"`). Includes a **"Gotchas"** section
    (clock-skew → Kerberos, DNS fail-over with the DC off, large agent-zip download,
    headless-ELK01 CA transfer via `scp`).
+5. **[`docs/06-network-telemetry-elk01.md`](./docs/06-network-telemetry-elk01.md)** — install
+   Suricata and Zeek on ELK01, enroll a host Elastic Agent on a new policy, and run the
+   beacon and DNS-tunnelling tests. Includes **"Gotchas"** (wrong-architecture agent
+   download, Zeek checksum offload on a VMware guest, the dpkg lock, the ES|QL regex
+   hyphen, and the baseline that missed a benign family).
 
 The Docker starter kit is in **[`elk/`](./elk/)**: `docker-compose.yml`, `.env.example`,
 `bring-up.sh`, and `verify.sh`. Copy `.env.example` to `.env`, fill in your own values,
@@ -295,6 +393,7 @@ generated Fleet **service token**, the Kibana **encryption keys**, and all **TLS
 and stack data. Passwords (Administrator, DSRM, `elastic` / `kibana_system`) are recorded
 **outside** this repo. `.env.example` documents the required variables with placeholder
 values only. Test-account passwords shown in incident reports are throwaway, lab-only values.
+Fleet enrollment tokens are cropped out of screenshots.
 
 ---
 
@@ -309,7 +408,8 @@ project-1-home-soc/
 │   ├── 02-sysmon-dc01.md         # Sysmon install + verification
 │   ├── 03-fleet-dc01.md          # Fleet Server + DC01 agent enrollment (+ Gotchas)
 │   ├── 04-client01-build.md      # CLIENT01 build, domain-join, instrument (+ Gotchas)
-│   ├── network-diagram.svg       # lab network diagram
+│   ├── 06-network-telemetry-elk01.md  # Zeek + Suricata on ELK01, beacon + DNS tests (+ Gotchas)
+│   ├── network-diagram.svg       # lab network diagram (sensors, listener, test flows)
 │   └── img/
 │       ├── cmd-runas-dc01.png                    # the action: runas on DC01
 │       ├── 4624-kibana-discover.png              # the result: 4624 logon in Kibana
@@ -333,7 +433,19 @@ project-1-home-soc/
 │       ├── T1053.005-case-sensitivity-test.png   # */create* vs */Create* result
 │       ├── T1053.005-sysmon-test2-cleanup.png    # cleanup: schtasks /Delete
 │       ├── T1053.005-sysmon-test4-cleanup.png    # cleanup: Unregister-ScheduledTask
-│       └── T1053.005-powershell.png              # cleanup run + empty Get-ScheduledTask
+│       ├── T1053.005-powershell.png              # cleanup run + empty Get-ScheduledTask
+│       ├── T1071-suricata-alert.png              # Suricata alerts for the 30-request beacon
+│       ├── T1071-suricata-alert-first-test.png   # first single test request, rule check
+│       ├── T1071-zeek-conn.png                   # Zeek conn rows for the beacon
+│       ├── T1071-zeek-http.png                   # Zeek http rows by user agent
+│       ├── T1071-interval-stddev.png             # interval hunt script output
+│       ├── fleet-elk01-network-healthy.png       # elk01-network agent Healthy in Fleet
+│       ├── T1071.004-dns-long-labels.png         # Zeek DNS, run 1
+│       ├── T1071.004-suricata-dns.png            # Suricata DNS rrname, run 1
+│       ├── T1071.004-dns-baseline.png            # 5-minute fan-out baseline
+│       ├── T1071.004-run2-label-lengths.png      # run 2: label 52, total 70
+│       ├── T1071.004-regex-test.png              # regex test over both runs
+│       └── T1071.004-benign-tpm-lookups.png      # the six benign matches
 ├── elk/
 │   ├── docker-compose.yml        # Elasticsearch + Kibana + Fleet Server
 │   ├── .env.example              # required variables (no secrets)
@@ -344,11 +456,18 @@ project-1-home-soc/
 │   ├── T1136.001-local-account-created-4720.yml
 │   ├── T1136.001-net-user-add-process.yml
 │   ├── T1053.005-scheduled-task-created-4698.yml
-│   └── T1053.005-schtasks-create-process.yml
+│   ├── T1053.005-schtasks-create-process.yml
+│   ├── T1071-beaconing.yml
+│   ├── T1071.004-dns-tunnelling.yml
+│   ├── suricata/
+│   │   └── T1071-beaconing.rules             # native Suricata rule (sid 1000001)
+│   └── hunts/
+│       └── T1071-beacon-interval.py          # interval-regularity hunt script
 └── incident-reports/             # one-page reports per attack
     ├── T1059.001-powershell-encoded-command.md
     ├── T1136.001-local-account-creation.md
-    └── T1053.005-scheduled-task-persistence.md
+    ├── T1053.005-scheduled-task-persistence.md
+    └── IR-2026-004.md            # T1071.001 beaconing + T1071.004 DNS tunnelling
 ```
 
 ---
@@ -374,5 +493,16 @@ project-1-home-soc/
 - [x] ATT&CK coverage layer ([`attack-navigator.json`](./attack-navigator.json))
 - [x] Blog post #1: [Building a home SOC lab, part 1](https://medium.com/@phoenix01eve/building-a-home-soc-lab-part-1-attacking-my-own-network-and-writing-the-detections-bd22e0ef26a9)
 
+**Network telemetry — Zeek + Suricata on ELK01.** ✅ Built and tested; some checks still open.
+
+- [x] Suricata and Zeek installed on ELK01; host Elastic Agent on policy `elk01-network` (Healthy); datasets `zeek.connection`, `zeek.http`, `zeek.dns`, `suricata.eve` arriving
+- [x] **T1071.001** (HTTP beaconing) — 30-request beacon detected 30/30 by Suricata, Zeek conn and Zeek http; interval hunt script separates it from other regular traffic (cv 0.06); incident report written
+- [x] **T1071.004** (DNS tunnelling) — two runs logged by both sensors; label-length rule written, found to match a benign family, tuned with an exclusion and a fan-out hunt; incident report section written
+- [x] Network diagram updated (sensors, listener, test flows)
+- [ ] Run `sigma convert` on both network rules and test the converted queries in Kibana
+- [ ] Re-run the DNS fan-out hunt over the full window and test the exclusion
+- [ ] Re-run the interval hunt script with its flag logic (added after the run, never executed)
+- [ ] Test CLIENT01-to-DC01 visibility on the sensor (DC01 was off)
+
 **Later weeks:** real Active Directory tradecraft (Kerberoasting, AS-REP roasting, password
-spraying), credential dumping and C2 detection, then a coverage dashboard and packaging.
+spraying), credential dumping, then a coverage dashboard and packaging.
