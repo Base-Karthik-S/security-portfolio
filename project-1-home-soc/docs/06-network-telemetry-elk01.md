@@ -4,7 +4,7 @@
 
 **Deliverables:** `detections/T1071-beaconing.yml`, `detections/T1071.004-dns-tunnelling.yml`, `incident-reports/IR-2026-004`, updated `network-diagram.svg`, Navigator additions (T1071, T1071.004).
 
-> Status (15 Oct 2026, ~18:30 BST): **Phases 0-6 DONE (beacon half of Project 4).** Suricata + Zeek installed and shipping through Fleet on `elk01-network`; 30-request beacon run detected 30/30 by Suricata, Zeek conn and Zeek http. **Phase 7 (DNS tunnelling) NOT STARTED.** Observed results and corrections to the original plan are marked **[observed]** below; everything else is as originally written.
+> Status (16 Oct 2026, ~00:30 BST): **Phases 0-7 DONE.** Suricata + Zeek installed and shipping through Fleet on `elk01-network`; 30-request beacon run detected 30/30 by Suricata, Zeek conn and Zeek http. DNS tunnelling: two runs of 40 queries, both sensors logged every query; a 40-character label rule was written, tested in ES|QL and found to match a benign TPM-attestation family, so it carries an exclusion; a fan-out hunt is the companion. **Still untested:** the Sigma-to-Elastic conversion of both network rules, the exclusion, and the fan-out hunt over the full window. Observed results and corrections to the original plan are marked **[observed]** below; everything else is as originally written.
 
 ---
 
@@ -126,31 +126,65 @@ Capture before cleanup: Suricata alert in Discover, `zeek.connection` rows, CLIE
 
 Convert any Sigma rule with `-t eql -p ecs_windows`-style conversion **appropriate to network fields**, and **test the converted query in Kibana before writing the IR.** A clean conversion has already proven not to mean a working query.
 
-## 7. Detection 2 — DNS tunnelling (toy) — **NOT STARTED**
+## 7. Detection 2 — DNS tunnelling (toy) — DONE (15-16 Oct)
 
-**[plan for the next session]** Record `Get-Date -Format o` before and after. Browse a few ordinary sites on CLIENT01 first (and note the time) so there is a baseline of normal query lengths. Add `-DnsOnly` and, if each query waits for a timeout, `-QuickTimeout` to `Resolve-DnsName`. Then in Discover open one `zeek.dns` document and **record the real field holding the query name** (candidate: `dns.question.name`; unverified). Suricata logs DNS as separate request and response events in `eve.json`; count requests only. Windows telemetry (`v10.events.data.microsoft.com`) appears as benign periodic DNS and belongs in the false-positive notes.
+**Test design.** Record `Get-Date -Format o` before and after each run. Send 40 queries per run to `<random label>.t.lab-tunnel.test` directly at ELK01 (`-Server 192.168.64.20`); nothing answers on UDP 53 there, so there are no reply fields, and both sensors still log the query. Add `-DnsOnly -QuickTimeout`.
 
-CLIENT01:
+**[observed - corrects the original command]** The first version used `Get-Random -Count 52` on the 36-character pool `(48..57)+(97..122)`. Without replacement that returns at most 36 values, so run 1 produced 36-character labels (54 characters in total, each label the whole alphabet shuffled), not the 52 and 70 intended. The fixed command samples with replacement:
 
 ```powershell
+$chars = (48..57)+(97..122) | ForEach-Object {[char]$_}
+Get-Date -Format o
 1..40 | ForEach-Object {
-  $label = -join ((48..57)+(97..122) | Get-Random -Count 52 | ForEach-Object {[char]$_})
-  Resolve-DnsName "$label.t.lab-tunnel.test" -Server 192.168.64.20 -ErrorAction SilentlyContinue | Out-Null
+  $label = -join (1..52 | ForEach-Object { $chars | Get-Random })
+  Resolve-DnsName "$label.t.lab-tunnel.test" -Server 192.168.64.20 -DnsOnly -QuickTimeout -ErrorAction SilentlyContinue | Out-Null
 }
+Get-Date -Format o
 ```
 
-Hunt `zeek.dns` / Suricata DNS events: query length, label count, volume to one parent domain. Compute entropy offline if the stack cannot. Baseline against normal queries first so the threshold is justified, not guessed.
+**[observed] Results** (full detail in IR-2026-004 section 9; Kibana and CLIENT01 times are BST):
+
+| Run | CLIENT01 start to end (BST) | Label | Zeek rows | Distinct | Suricata |
+|---|---|---|---|---|---|
+| 1 | 22:30:57.95 to 22:35:57.13 | 36 chars (bug) | 240 | 40 | 240 rows, 40 distinct |
+| 2 | 23:22:29.73 to 23:27:12.03 | 52 chars, total 70 | 240 | 40 | not queried |
+| unexplained | first seen about 23:19 | 40+ chars | 36 | 6 | not queried |
+
+- **Field names:** Zeek `zeek.dns.query` (not `dns.question.name`); Suricata `suricata.eve.dns.queries.rrname`.
+- **Six rows per name on both sensors** (240 for 40 names), unchanged by widening the window. Timing fits Windows retries (about t, t+1 s, t+3 s, two rows per send). A and AAAA split not checked.
+- **`-QuickTimeout` made no difference:** about 7 s per name.
+- **The unexplained six names** (36 rows) were first seen about three minutes before run 2 started. Cause not established.
+- **Not explained:** Suricata's unfiltered port-53 count of 313 was never broken down by event type.
+
+**[observed] Baseline, and what it did to the rule.** The first baseline (the 5-minute run-2 window) had 89 rows and 49 distinct names, with a longest total query of 72 (a DC-locator GUID name), so **total query length cannot separate the tunnel**. I then wrote a rule on a single label of 40 or more characters. Run over the whole window (22:30:57 to 23:27:13 BST) it matched six **benign** names: `vmw-keyid-<40 hex>[-v2].microsoftaik.azure.net`, which look like Windows TPM attestation (AIK certificate) lookups (matches the pattern described at call4cloud.nl; `vmw` meaning VMware's vTPM is my inference). They are 50 and 53 characters per label, against the tunnel's 52, so **no single-label length threshold separates them**. Benign set: 627 rows, 158 distinct names; 6 of 158 distinct names (about 4%) matched before tuning. The first baseline slice missed them because they arrived about 25 s before its window opened.
+
+- **Rule:** `detections/T1071.004-dns-tunnelling.yml`: a label of 40 or more characters, excluding the exact parent `.microsoftaik.azure.net` (never widen to `*.azure.net`).
+- **Companion hunt:** fan-out per source and parent (30 or more distinct names in 5 minutes). Tunnel 40; TPM family 6; benign maximum 17 in the 5-minute slice (not re-checked over the full window).
+- **Entropy was not used:** both generators produce uniform-random labels, so a threshold would be tuned on an artefact.
+- **Regex tests (ES|QL `RLIKE`):** run 2 matched, run 1 did not (36-char labels, as expected), the TPM family matched (the false positive).
+
+**Gotchas hit**
+- **ES|QL `RLIKE` rejects a trailing hyphen in a character class.** `[A-Za-z0-9_-]` gives "invalid range: from (95) cannot be > to (93)". Put the hyphen first (`[-A-Za-z0-9_]`) or escape it in a triple-quoted string; both behaved the same. A Python regex test passes the broken form, so test in the target engine.
+- **A short baseline slice is not a baseline.** Test the rule over a wider window before writing a threshold.
+- **Count arithmetic:** the matched group is separate from the 621 / 152 non-matching group, so the benign total is 627 rows and 158 distinct names (I first wrote 6 of 152).
+- **Parse the YAML after writing it:** a colon inside an unquoted list item broke the first rewrite.
+- **`DISSECT "%{label}.%{parent}"` splits at the first dot**, so `max_label` measured the first label only, and "parent" is not the registered domain.
+- **Kibana's ES|QL results table can collapse rows into group headers;** expand them or turn off "Group by" to see the values.
+- **Observed placement again:** CLIENT01's DNS fell back to `1.1.1.1` with DC01 off and the sensor still logged those queries. CLIENT01 to DC01 remains untested.
+
+**Not tested:** the Sigma-to-Elastic conversion of either network rule (`T1071-beaconing.yml`, `T1071.004-dns-tunnelling.yml`), the `endswith` exclusion, and the fan-out hunt over the full window.
 
 ## 8. Write-up checklist
 
 - [x] `detections/T1071-beaconing.yml` (signature + behaviour logic, FP notes) — delivered; Sigma conversion untested
 - [x] `detections/suricata/T1071-beaconing.rules` and `detections/hunts/T1071-beacon-interval.py`
-- [ ] `detections/T1071.004-dns-tunnelling.yml`
-- [x] IR-2026-004 beacon half (UTC timeline; DNS section pending)
-- [ ] Screenshots: `T1071-suricata-alert.png` and `T1071-zeek-conn.png` (30-result versions, taken), `T1071-suricata-alert-first-test.png` (rename the 4-result one), `T1071-zeek-http.png` (still to take), `T1071-interval-stddev.png` (script output, taken), `fleet-elk01-network-healthy.png` (taken), `T1071.004-dns-long-labels.png` (pending)
-- [ ] Update `network-diagram.svg` (sensor on ELK01, listener `:8080`)
-- [x] T1071.001 added to `attack-navigator.json` (delivered; T1071.004 pending)
+- [x] `detections/T1071.004-dns-tunnelling.yml` — delivered; regex tested in ES|QL, exclusion and conversion untested
+- [x] IR-2026-004 beacon half and DNS section (UTC timeline)
+- [ ] Screenshots: `T1071-suricata-alert.png` and `T1071-zeek-conn.png` (30-result versions, taken), `T1071-suricata-alert-first-test.png` (rename the 4-result one), `T1071-zeek-http.png` (still to take), `T1071-interval-stddev.png` (script output, taken), `fleet-elk01-network-healthy.png` (taken), and six DNS screenshots that exist but still need saving under these names: `T1071.004-dns-long-labels.png`, `T1071.004-suricata-dns.png`, `T1071.004-dns-baseline.png`, `T1071.004-run2-label-lengths.png`, `T1071.004-regex-test.png`, `T1071.004-benign-tpm-lookups.png`; confirm every filename and extension before linking
+- [x] Update `network-diagram.svg` (sensors and host agent on ELK01, listener `:8080`, beacon and DNS test flows) — updated 16 Oct; check it renders in your browser
+- [x] T1071.001 and T1071.004 in `attack-navigator.json` (T1071.004 marked as partially validated)
 - [ ] README coverage table + this doc linked
+- [ ] Re-run the fan-out hunt over the full window; test the exclusion; run `sigma convert` on both network rules
 - [x] Snapshot ELK01 `elk-network-sensors-healthy` (taken; `pre-network-sensors` also exists)
 
-**Interview line:** *"I had host telemetry only, saw that gap in an investigation, and closed it — and I know the sensor only sees what's routed past it."*
+**Interview line:** *"I had host telemetry only, saw that gap in an investigation, and closed it. My first DNS rule fired on Windows TPM lookups whose labels were longer than my tunnel's, so I wrote down why a length threshold can't work, tuned it with a narrow exclusion and added a fan-out check. I also know the sensor only sees what's routed past it."*
