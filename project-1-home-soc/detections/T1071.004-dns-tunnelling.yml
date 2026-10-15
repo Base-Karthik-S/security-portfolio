@@ -1,0 +1,84 @@
+title: DNS Query With Unusually Long Label (Possible DNS Tunnelling)
+id: 6acde383-5948-4436-a51c-8dd2d50469d1
+status: experimental
+description: >
+  Detects a DNS query containing a single label of 40 or more characters, a
+  common property of data-carrying DNS tunnels (T1071.004), excluding one known
+  benign family (Windows TPM attestation lookups under microsoftaik.azure.net).
+  Written against Zeek dns.log. Single-event rule: it cannot see fan-out (many
+  distinct names under one parent) or entropy. See the hunt query in the comments.
+  The regex was tested in ES|QL RLIKE; the exclusion and the Sigma-to-Elastic
+  conversion are UNTESTED. Test the converted query in Kibana before relying on it.
+references:
+  - https://attack.mitre.org/techniques/T1071/004/
+author: Karthik S
+date: 2026-10-16
+tags:
+  - attack.command-and-control
+  - attack.t1071.004
+logsource:
+  product: zeek
+  service: dns
+detection:
+  selection:
+    # Zeek field `query`; in Elastic this is `zeek.dns.query` (verified in Discover, 15 Oct 2026).
+    # `.*` on both sides because Elasticsearch regex is anchored. No \s and no (?i): unsupported there.
+    # A trailing `-` in a character class is rejected by ES|QL RLIKE ("invalid range: from (95)
+    # cannot be > to (93)": `_-]` was read as a range), so the hyphen is placed FIRST. Tested:
+    # `[-A-Za-z0-9_]` and `[A-Za-z0-9_\-]` behaved identically in ES|QL RLIKE.
+    query|re: '.*[-A-Za-z0-9_]{40,}.*'
+  filter_tpm_attestation:
+    # Observed benign: vmw-keyid-<40 hex>[-v2].microsoftaik.azure.net (label 50 or 53 chars) from
+    # CLIENT01 to 1.1.1.1. Keep this exclusion to the EXACT parent. Never widen to *.azure.net,
+    # where customers can create names. Trade-off: anything an attacker can hang under this exact
+    # Microsoft-controlled parent is not covered, but that parent is not attacker-controlled.
+    query|endswith: '.microsoftaik.azure.net'
+  condition: selection and not filter_tpm_attestation
+fields:
+  - id.orig_h
+  - id.resp_h
+  - query
+  - qtype_name
+falsepositives:
+  - Windows TPM attestation (AIK certificate) lookups under microsoftaik.azure.net. Measured in the
+    lab (6 distinct names, one row each, CLIENT01 to 1.1.1.1, 23:22:05 to 23:22:07 BST, label
+    length 50 or 53). Excluded above.
+  - Other machine-generated names (CDN, tracking, DKIM and DNSBL-style lookups, other cloud
+    attestation or key-ID services) are expected in a larger estate and were not seen in the lab.
+    The lab sample is about 158 distinct benign names over ~56 minutes, one environment.
+level: medium
+
+# ---------------------------------------------------------------------------
+# Evidence behind the rule (lab, 15 Oct 2026; supported, not proven)
+# ---------------------------------------------------------------------------
+# Window 22:30:57 to 23:27:13 BST, `zeek.dns`, ES|QL RLIKE ".*[-A-Za-z0-9_]{40,}.*":
+#   tunnel names matched:       276 rows, 46 distinct (run 2: 240/40 in its own window; plus
+#                               6 names / 36 rows first seen 23:19 BST, cause not established)
+#   tunnel names NOT matched:   240 rows, 40 distinct (run 1: labels were 36 chars, a generator bug)
+#   benign names NOT matched:   621 rows, 152 distinct
+#   benign names matched:       6 rows, 6 distinct (the TPM attestation family above)
+#   => benign total 627 rows, 158 distinct; 6 of 158 distinct names (about 4%) match before the
+#      exclusion. That is a share of distinct names, not an alert rate.
+#
+# A length threshold cannot separate these on its own: the benign TPM labels are 50 and 53
+# characters and the tunnel label is 52, so any threshold that catches the tunnel also catches
+# the benign names. Total query length is also dead (benign up to 76 by my count, 73 for the
+# non-v2 form; tunnel 70). The exclusion is therefore tuning against a named benign family, not a
+# cleaner threshold. The earlier "longest benign label 36" came from a 5-minute slice that did not
+# contain these lookups.
+#
+# Not used: entropy. Both generators emit uniform-random labels, so a threshold tuned here
+#   would be tuned on an artefact of the generator.
+#
+# Companion hunt (not expressible in Sigma): fan-out per parent domain, ES|QL.
+#   In the 5-minute run-2 slice the benign maximum was 17 distinct names under one parent
+#   (prod.do.dsp.mp.microsoft.com) and 13 under 5.153.72.in-addr.arpa; the tunnel had 40. The TPM
+#   family is 6 names under microsoftaik.azure.net. RE-CHECK over the full ~56-minute window before
+#   trusting the 30 threshold: the 17 came from a 5-minute slice. The DISSECT split is at the FIRST
+#   dot, so "parent" is not the registered domain.
+#
+#   FROM logs-*
+#   | WHERE event.dataset == "zeek.dns"
+#   | DISSECT zeek.dns.query "%{label}.%{parent}"
+#   | STATS names = COUNT_DISTINCT(zeek.dns.query) BY source.ip, parent
+#   | WHERE names >= 30
