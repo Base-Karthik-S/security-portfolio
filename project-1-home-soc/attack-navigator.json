@@ -6,7 +6,7 @@
     "layer": "4.5"
   },
   "domain": "enterprise-attack",
-  "description": "Techniques emulated with Atomic Red Team against CLIENT01 and detected with Sigma rules in Elastic. Green = detection validated against lab telemetry, with an incident report.",
+  "description": "Techniques emulated in the lab and detected in Elastic. T1059.001, T1136.001 and T1053.005: Atomic Red Team against CLIENT01, Sigma rules, host telemetry. T1071.001: custom beacon simulation, Suricata and Zeek network telemetry. Green = detection validated against lab telemetry, with an incident report.",
   "filters": {
     "platforms": [
       "Windows"
@@ -69,6 +69,16 @@
       "tactic": "privilege-escalation",
       "color": "#31a354",
       "comment": "IR-2026-003. Scheduled task: Security 4698 (primary, both schtasks and PowerShell cmdlet routes) plus Sysmon schtasks /create.",
+      "enabled": true,
+      "metadata": [],
+      "links": [],
+      "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1071.001",
+      "tactic": "command-and-control",
+      "color": "#31a354",
+      "comment": "IR-2026-004. Simulated HTTP beacon (30 requests, ~60 s, jitter): Suricata signature (sid 1000001) and Zeek http/conn telemetry on ELK01. Interval-regularity detection is a hunt script over Zeek conn.log, not a SIEM rule; threshold supported by one beacon and five baseline pairs.",
       "enabled": true,
       "metadata": [],
       "links": [],
