@@ -4,7 +4,7 @@
 
 **Deliverables:** `detections/T1071-beaconing.yml`, `detections/T1071.004-dns-tunnelling.yml`, `incident-reports/IR-2026-004`, updated `network-diagram.svg`, Navigator additions (T1071, T1071.004).
 
-> Status: **runbook drafted 14 Oct 2026 (late). Nothing below has been run yet.** Tick phases as you go and record *observed*, not predicted, results.
+> Status (15 Oct 2026, ~18:30 BST): **Phases 0-6 DONE (beacon half of Project 4).** Suricata + Zeek installed and shipping through Fleet on `elk01-network`; 30-request beacon run detected 30/30 by Suricata, Zeek conn and Zeek http. **Phase 7 (DNS tunnelling) NOT STARTED.** Observed results and corrections to the original plan are marked **[observed]** below; everything else is as originally written.
 
 ---
 
@@ -18,10 +18,12 @@
 
 ## 1. Placement (read before building)
 
-VMnet8 is a NAT segment. ELK01 only sees traffic **to or from ELK01**. It will not see CLIENT01↔DC01.
+**[observed - corrects the original plan]** The original plan assumed ELK01 would only see traffic to or from ELK01. In practice `tcpdump -ni ens33 host 192.168.64.30 and not host 192.168.64.20` captured CLIENT01's traffic to `173.46.83.203:80` and Suricata logged CLIENT01 to `1.1.1.1:53` DNS, so VMnet8 delivers other VMs' traffic to ELK01. **CLIENT01 to DC01 traffic was NOT tested** (DC01 was off). The listener design below still works and is reproducible without relying on that behaviour, so keep it.
+
+Original assumption (kept for the record): VMnet8 is a NAT segment, so ELK01 only sees traffic to or from ELK01.
 
 - **HTTP beacon:** CLIENT01 → listener on ELK01 (`:8080`). ELK01 sees the flows.
-- **DNS tunnelling:** CLIENT01 normally resolves via DC01, which ELK01 cannot see. For the test, send queries **directly to ELK01** (`-Server 192.168.64.20`). Nothing answers on UDP 53 there (systemd-resolved listens on 127.0.0.53 only); Zeek and Suricata still log the unanswered query. Expect no reply fields in the log.
+- **DNS tunnelling:** CLIENT01 normally resolves via DC01 (and falls back to 1.1.1.1 when DC01 is off). For a reproducible test, send queries **directly to ELK01** (`-Server 192.168.64.20`). Nothing answers on UDP 53 there (systemd-resolved listens on 127.0.0.53 only); Zeek and Suricata still log the unanswered query. Expect no reply fields in the log.
 - Do not attempt promiscuous capture on VMnet8.
 
 ## 2. Install Suricata (ELK01)
@@ -45,10 +47,14 @@ alert http $HOME_NET any -> any 8080 (msg:"LAB T1071 beacon - custom user agent"
 ```
 
 ```bash
+# [observed] edit as root: sudo nano /etc/suricata/suricata.yaml. Under af-packet set `interface: ens33`;
+# under rule-files add `- local.rules`. The rules dir is root-only: use sudo for every read.
 sudo suricata -T -c /etc/suricata/suricata.yaml    # config test: must pass
 sudo systemctl enable --now suricata
 sudo tail -f /var/log/suricata/eve.json            # should start producing events
 ```
+
+**[observed]** `suricata-update` + the custom file loaded 53,159 rules with 0 failed. An earlier log line "1 rule files specified, but no rules were loaded" pre-dated `suricata-update` and is harmless. Verify the custom rule with `sudo grep 1000001 /var/log/suricata/fast.log`. The alert shows `Classification: (null)` because the rule has no `classtype` (cosmetic).
 
 ## 3. Install Zeek (ELK01)
 
@@ -65,6 +71,14 @@ ls /opt/zeek/logs/current/      # conn.log, dns.log, http.log ...
 
 JSON output is what the Elastic Zeek integration expects.
 
+**[observed] Zeek install gotchas**
+- Repo: openSUSE Build Service `security:zeek/xUbuntu_24.04` (add the `.list` and the dearmored key, then `apt update && apt install zeek`).
+- `apt` can wait on `unattended-upgrades` holding the dpkg lock (179 packages were upgradable). Do not kill it or delete lock files; wait with `while pgrep -f unattended-upgrade >/dev/null; do sleep 10; done; sudo apt install -y zeek`.
+- The package pulls in Postfix, which prompts for a mail configuration type. Choose **Local only** (no network exposure). System mail name: accept the default.
+- Set `interface=ens33` in `/opt/zeek/etc/node.cfg`.
+- **Checksum offload:** flows originating on ELK01 were logged with `conn_state` `SH`/`OTH`, 1 reply packet, `resp_bytes: 0`, and a lowercase/uppercase `c` in `history`. Fix: `echo 'redef ignore_checksums = T;' | sudo tee -a /opt/zeek/share/zeek/site/local.zeek && sudo /opt/zeek/bin/zeekctl deploy`. After: `SF`, `resp_bytes: 202`, 5 packets each way. A `grep bad_checksum` on `weird.log` returned 0 because Zeek names these weirds by protocol; the before/after rows are the evidence, and the `weird.log` entries were not captured. Deliberate lab trade-off.
+- Zeek rotates `conn.log` hourly into `/opt/zeek/logs/<date>/conn.*.log.gz`; any analysis spanning the hour must read both.
+
 ## 4. Fleet: new policy + host agent
 
 1. Kibana → Fleet → Agent policies → create **`elk01-network`**.
@@ -72,7 +86,12 @@ JSON output is what the Elastic Zeek integration expects.
 3. Enrol an **Elastic Agent on the ELK01 host** (this is separate from the Fleet Server container). Use the Fleet "Add agent" command, pointing at `https://192.168.64.20:8220` with `--certificate-authorities=<path to lab CA>`. Run as root so it can read both log locations.
 4. Verify **Healthy** in Fleet, then in Discover (`logs-*`) check `event.dataset : "zeek.connection"` and `event.dataset : "suricata.eve"`.
 
-Gotcha candidates to record if hit: cert SAN/CA path on the host agent, file permissions on `/opt/zeek/logs`, Zeek log path globs, duplicate ingestion of rotated logs.
+**[observed]** Host agent enrolled and **Healthy** on `elk01-network` (screenshot `fleet-elk01-network-healthy.png`; crop the enrollment token). Datasets that arrived: `zeek.connection`, `zeek.http`, `suricata.eve`. Gotchas actually hit:
+- **Wrong architecture and version:** the first download was `elastic-agent-9.4.8-linux-arm64` (the Fleet "Add agent" snippet's tarball, wrong for an x86-64 VM and newer than the 9.4.3 stack). The binary failed with `Syntax error: word unexpected` (the shell was reading a foreign-architecture binary as a script). Use `elastic-agent-9.4.3-linux-x86_64.tar.gz`. Confirm with `uname -m`.
+- **CA path:** a copy of the lab CA lives at `/etc/elastic-agent-ca/ca.crt` (source: the Docker volume `elk_certs`), used with `--certificate-authorities`. The Docker volume path can vanish after `docker compose down -v`.
+- **Token hygiene:** the enrollment token was pasted into a chat. It is low-risk (private lab, one policy) but **revoke it in Fleet -> Enrollment tokens** (not confirmed done).
+- Fleet shows "Upgrade available"; ignore it (agents newer than Fleet Server are unsupported). A stale **Offline** Fleet Server record (`ea51522d3b6f`) from a recreated container can be removed to tidy screenshots.
+- **RAM:** ELK01 (5.7 GiB total) had 1.1 GiB available and ~430 MiB swap in use with everything running. If it drops below ~500 MiB or the kernel kills a process, raise ELK01 to 7 GB. Check `sudo dmesg -T | grep -i "out of memory\|killed process"`.
 
 ## 5. Listener and beacon
 
@@ -87,10 +106,12 @@ CLIENT01 (PowerShell; 30 beats, 60 s ± 5 s jitter; record the start time with `
 ```powershell
 $ProgressPreference='SilentlyContinue'
 1..30 | ForEach-Object {
-  Invoke-WebRequest -UseBasicParsing -Uri http://192.168.64.20:8080/beacon -UserAgent "LabBeacon/1.0" | Out-Null
+  curl.exe -s -A "LabBeacon/1.0" http://192.168.64.20:8080/beacon | Out-Null
   Start-Sleep -Seconds (60 + (Get-Random -Minimum -5 -Maximum 6))
 }
 ```
+
+**[observed]** `curl.exe` (not the PowerShell `curl` alias) was used. The Python listener only runs while its terminal stays open; `echo ok > ~/listener/beacon` makes it return 200 instead of 404. Run on 15 Oct: start 15:57:26 UTC, end 16:27:33 UTC; **30 Suricata alerts, 30 `zeek.connection` rows, 30 `zeek.http` rows**. Not checked: Sysmon EID 3 on CLIENT01.
 
 Capture before cleanup: Suricata alert in Discover, `zeek.connection` rows, CLIENT01 Sysmon EID 3 (network connect) for the same flows if enabled by the config (check; do not assume).
 
@@ -99,9 +120,15 @@ Capture before cleanup: Suricata alert in Discover, `zeek.connection` rows, CLIE
 - **Signature:** the Suricata rule above (fires on the user agent). Note the weakness: attackers change the UA. This is the *naive version* — say what it misses.
 - **Behaviour:** `conn.log` interval regularity. Kibana to pull candidate pairs (source, destination, port, count over the window); then compute the standard deviation of inter-arrival times per pair. EQL/ES|QL alone is awkward for this, so state honestly if you use a small Python script over an export. Low standard deviation relative to the mean + enough samples (say ≥ 10) = beacon candidate. Check what jitter does to the threshold, and what legitimate periodic traffic (NTP, Windows telemetry, agent check-ins) looks like — that is the false-positive section.
 
+**[observed]** The interval check was done with a small Python hunt script over Zeek `conn.log` (committed as `detections/hunts/T1071-beacon-interval.py`), not in the SIEM; Sigma and the KQL used here cannot compute a standard deviation. Results (cv = sd / mean): beacon 30 connections, mean 60.4 s, sd 3.5 s, **cv 0.06**; SSDP multicast `192.168.64.1 -> 239.255.255.250:1900` cv 0.00 (more regular than the beacon, so a multicast exclusion is required); Elastic Agent `:9200` cv 0.61; DNS to 1.1.1.1 cv 1.42 and 2.96; one unidentified `34.95.113.255:443` cv 0.88. Threshold `n >= 10`, `cv < 0.2`, multicast excluded, supported by one beacon and five baseline pairs, not proven. The script's flag column is a later addition and has **not been re-run**.
+
+**[observed]** Kibana queries tested (window 16:57-17:27 BST, 30 results each): `event.dataset : "suricata.eve" and destination.port : 8080 and event.kind : "alert"`; `event.dataset : "zeek.connection" and destination.port : 8080`; `event.dataset : "zeek.http" and user_agent.original : "LabBeacon/1.0"`. The Zeek HTTP user agent field in Elastic is `user_agent.original`. A Sigma-to-Elastic conversion of the rule has **not** been run. A KQL query with a quoted wildcard (`user_agent* : "LabBeacon*"`) also returned 30, which contradicts the earlier "quoted wildcard is literal" note; unexplained, so cite only the exact-value form.
+
 Convert any Sigma rule with `-t eql -p ecs_windows`-style conversion **appropriate to network fields**, and **test the converted query in Kibana before writing the IR.** A clean conversion has already proven not to mean a working query.
 
-## 7. Detection 2 — DNS tunnelling (toy)
+## 7. Detection 2 — DNS tunnelling (toy) — **NOT STARTED**
+
+**[plan for the next session]** Record `Get-Date -Format o` before and after. Browse a few ordinary sites on CLIENT01 first (and note the time) so there is a baseline of normal query lengths. Add `-DnsOnly` and, if each query waits for a timeout, `-QuickTimeout` to `Resolve-DnsName`. Then in Discover open one `zeek.dns` document and **record the real field holding the query name** (candidate: `dns.question.name`; unverified). Suricata logs DNS as separate request and response events in `eve.json`; count requests only. Windows telemetry (`v10.events.data.microsoft.com`) appears as benign periodic DNS and belongs in the false-positive notes.
 
 CLIENT01:
 
@@ -116,13 +143,14 @@ Hunt `zeek.dns` / Suricata DNS events: query length, label count, volume to one 
 
 ## 8. Write-up checklist
 
-- [ ] `detections/T1071-beaconing.yml` (signature + behaviour logic, FP notes)
+- [x] `detections/T1071-beaconing.yml` (signature + behaviour logic, FP notes) — delivered; Sigma conversion untested
+- [x] `detections/suricata/T1071-beaconing.rules` and `detections/hunts/T1071-beacon-interval.py`
 - [ ] `detections/T1071.004-dns-tunnelling.yml`
-- [ ] IR-2026-004 (UTC timeline; say Kibana shows BST)
-- [ ] Screenshots named up front: `T1071-suricata-alert.png`, `T1071-zeek-conn.png`, `T1071-interval-stddev.png`, `T1071.004-dns-long-labels.png`, `fleet-elk01-network-healthy.png`
+- [x] IR-2026-004 beacon half (UTC timeline; DNS section pending)
+- [ ] Screenshots: `T1071-suricata-alert.png` and `T1071-zeek-conn.png` (30-result versions, taken), `T1071-suricata-alert-first-test.png` (rename the 4-result one), `T1071-zeek-http.png` (still to take), `T1071-interval-stddev.png` (script output, taken), `fleet-elk01-network-healthy.png` (taken), `T1071.004-dns-long-labels.png` (pending)
 - [ ] Update `network-diagram.svg` (sensor on ELK01, listener `:8080`)
-- [ ] Add T1071 and T1071.004 to `attack-navigator.json`
+- [x] T1071.001 added to `attack-navigator.json` (delivered; T1071.004 pending)
 - [ ] README coverage table + this doc linked
-- [ ] Snapshot ELK01 `elk-network-sensors-healthy`
+- [x] Snapshot ELK01 `elk-network-sensors-healthy` (taken; `pre-network-sensors` also exists)
 
 **Interview line:** *"I had host telemetry only, saw that gap in an investigation, and closed it — and I know the sensor only sees what's routed past it."*
