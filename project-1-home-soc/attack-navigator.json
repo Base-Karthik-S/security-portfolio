@@ -6,7 +6,7 @@
     "layer": "4.5"
   },
   "domain": "enterprise-attack",
-  "description": "Techniques emulated in the lab and detected in Elastic. T1059.001, T1136.001 and T1053.005: Atomic Red Team against CLIENT01, Sigma rules, host telemetry. T1071.001: custom beacon simulation, Suricata and Zeek network telemetry. Green = detection validated against lab telemetry, with an incident report.",
+  "description": "Techniques emulated in the lab and detected in Elastic. T1059.001, T1136.001 and T1053.005: Atomic Red Team against CLIENT01, Sigma rules, host telemetry. T1071.001 and T1071.004: custom beacon and DNS-tunnelling simulations, Suricata and Zeek network telemetry. Dark green = detection validated against lab telemetry, with an incident report. Light green = detected and written up, but part of the tuning is not yet validated.",
   "filters": {
     "platforms": [
       "Windows"
@@ -83,6 +83,16 @@
       "metadata": [],
       "links": [],
       "showSubtechniques": true
+    },
+    {
+      "techniqueID": "T1071.004",
+      "tactic": "command-and-control",
+      "color": "#a1d99b",
+      "comment": "IR-2026-004 section 9. Simulated DNS tunnelling (two runs of 40 queries): Zeek dns and Suricata DNS telemetry on ELK01. Rule: single label of 40+ characters, tested in ES|QL; it also matched six benign Windows TPM attestation names (labels 50 and 53 chars vs the tunnel's 52), so a narrow exclusion was added. Fan-out hunt (6 benign vs 40 tunnel names under one parent) not re-checked over the full window. Exclusion and Sigma-to-Elastic conversion untested; benign sample about 158 names.",
+      "enabled": true,
+      "metadata": [],
+      "links": [],
+      "showSubtechniques": true
     }
   ],
   "gradient": {
@@ -97,6 +107,10 @@
     {
       "label": "Detection validated + incident report",
       "color": "#31a354"
+    },
+    {
+      "label": "Detected + incident report; tuning partly unvalidated",
+      "color": "#a1d99b"
     }
   ],
   "metadata": [],
