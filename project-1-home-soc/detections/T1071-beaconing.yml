@@ -1,0 +1,54 @@
+title: Lab Beacon - Custom User Agent on HTTP Connection (Signature Half)
+id: a4d1c8e2-5b37-4f90-8c1d-72e6b9a03f54
+status: experimental
+description: >
+  Detects HTTP requests carrying the fixed user agent "LabBeacon/1.0" used by the
+  lab's simulated C2 beacon (T1071.001). This is the SIGNATURE half of the
+  detection and is deliberately the naive version: any operator who changes the
+  user agent defeats it. The BEHAVIOURAL half (interval regularity in Zeek
+  conn.log) cannot be expressed in Sigma, because Sigma has no standard-deviation
+  or inter-arrival-time aggregation. See "Behavioural half" below.
+references:
+  - project-1-home-soc/incident-reports/IR-2026-004.md
+author: Project 1 home SOC lab
+date: 2026-10-15
+tags:
+  - attack.command-and-control
+  - attack.t1071.001
+logsource:
+  product: zeek
+  service: http
+detection:
+  selection:
+    user_agent: 'LabBeacon/1.0'
+  condition: selection
+falsepositives:
+  - None expected in the lab. In a real estate any fixed string is trivially evaded; use this only as a known-bad indicator.
+level: medium
+
+# ---------------------------------------------------------------------------
+# Kibana query TESTED against the Zeek HTTP integration (15 Oct 2026,
+# 16:57-17:27 BST window): 30 documents, one per beacon request.
+#   event.dataset : "zeek.http" and user_agent.original : "LabBeacon/1.0"
+# Field mapping: the Sigma rule above uses Zeek's native field name (user_agent);
+# in Elastic it is user_agent.original. A sigma-cli conversion has NOT been run
+# for this rule, so the Sigma-to-Elastic path is unverified; the Kibana query
+# above is what was actually tested.
+#
+# Equivalent native Suricata rule (TESTED: fired on 30/30 beacon requests plus
+# 3 single-request tests; see IR-2026-004). Lives in /var/lib/suricata/rules/local.rules
+#
+# alert http $HOME_NET any -> any 8080 (msg:"LAB T1071 beacon - custom user agent"; http.user_agent; content:"LabBeacon/1.0"; sid:1000001; rev:1;)
+#
+# Behavioural half (TESTED as a hunt script, not a SIEM rule):
+#   Source: Zeek conn.log (hourly rotation: read current + rotated .gz).
+#   Group by (id.orig_h, id.resp_h, id.resp_p). For groups with n >= 10 connections
+#   compute the mean and population standard deviation of inter-arrival times.
+#   Flag when cv = sd / mean < 0.2, excluding multicast destinations (224.0.0.0/4).
+#   Observed on lab data: beacon cv 0.06 (n=30, mean 60.4 s, sd 3.5 s);
+#   next-lowest candidates: SSDP multicast cv 0.00 (excluded by the multicast
+#   rule), Elastic Agent :9200 cv 0.61, DNS to 1.1.1.1 cv 1.42 and 2.96.
+#   The 0.2 threshold is supported by ONE beacon and five baseline pairs; it is
+#   not proven. Higher-jitter beacons need a looser threshold and will cost
+#   more false positives.
+# ---------------------------------------------------------------------------
